@@ -15,7 +15,7 @@ pip install ec2instance
 ```
 usage: ec2instance [-h] [-t INSTANCE_TYPE] [-i AMI_IDENTIFIER] [-f USER_DATA_FILENAME]
                    [--volume-size VOLUME_SIZE] [--profile PROFILE_NAME] [--region AWS_REGION]
-                   [--non-interactive] [--show-data-path] [--delete-sandbox]
+                   [--non-interactive] [--show-data-path]
 
 Quickly launch an EC2 instance for small tasks. The instance's lifecycle is tied to the process,
 enabling easy Ctrl+C instance termination when done.

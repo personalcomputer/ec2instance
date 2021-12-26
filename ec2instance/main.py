@@ -353,19 +353,11 @@ def main():
                                  '--non-interactive.')
     arg_parser.add_argument('--show-data-path', action='store_true', help='Print out the path where ec2instance is '
                             'storing local data and configuration.')
-    arg_parser.add_argument('--delete-sandbox', action='store_true', help='Delete the persistent VPC & keypair '
-                            'created by ec2instance.')
     args = arg_parser.parse_args()
 
     if args.show_data_path:
         print(CONFIG_DIR)
         sys.exit(0)
-
-    if args.delete_sandbox:
-        raise NotImplementedError(
-            'Sorry, automatic sandbox deletion is not yet implemented. Please just search \'ec2instance\' in your VPCs'
-            ' list, and \'ec2instance\' in your EC2 keypairs to find the resources to delete.'
-        )
 
     # Load user data
     if not os.path.exists(DEFAULT_USER_DATA_PATH):
