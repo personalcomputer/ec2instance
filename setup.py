@@ -10,7 +10,7 @@ with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='ec2instance',
-    version='1.0',
+    version='1.1',
     description="Quickly launch an EC2 instance for small tasks",
     keywords='ec2instance',
     long_description=long_description,
@@ -19,6 +19,9 @@ setup(
     author_email='john@johngm.com',
     python_requires='>=3.7.0',
     url='https://github.com/personalcomputer/ec2instance',
+    entry_points={
+        'console_scripts': ['ec2instance=ec2instance.main:main'],
+    },
     packages=find_packages(include=['ec2instance', 'ec2instance.*']),
     install_requires=[
         'boto3',

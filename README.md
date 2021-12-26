@@ -15,7 +15,7 @@ pip install ec2instance
 ```
 usage: ec2instance [-h] [-t INSTANCE_TYPE] [-i AMI_IDENTIFIER] [-f USER_DATA_FILENAME]
                    [--volume-size VOLUME_SIZE] [--profile PROFILE_NAME] [--region AWS_REGION]
-                   [--non-interactive]
+                   [--non-interactive] [--show-data-path] [--delete-sandbox]
 
 Quickly launch an EC2 instance for small tasks. The instance's lifecycle is tied to the process,
 enabling easy Ctrl+C instance termination when done.
@@ -40,6 +40,10 @@ optional arguments:
   --non-interactive     By default a shell will be opened in the spawned instance, and the
                         instance will be terminated when the shell is closed. To instead output
                         ec2 metadata as json and then exit, specify --non-interactive.
+  --show-data-path      Print out the path where ec2instance is storing local data and
+                        configuration.
+
+help & support: https://github.com/personalcomputer/ec2instance/issues
 ```
 
 ## Demo

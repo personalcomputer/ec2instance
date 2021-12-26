@@ -329,7 +329,8 @@ def main():
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
     arg_parser = argparse.ArgumentParser(
         description='Quickly launch an EC2 instance for small tasks. The instance\'s '
-                    'lifecycle is tied to the process, enabling easy Ctrl+C instance termination when done.'
+                    'lifecycle is tied to the process, enabling easy Ctrl+C instance termination when done.',
+        epilog='help & support:\n  https://github.com/personalcomputer/ec2instance/issues'
     )
     arg_parser.add_argument('-t', '--type', type=str, default=DEFAULT_INSTANCE_TYPE, dest='instance_type',
                             help=f'EC2 instance type. (default: {DEFAULT_INSTANCE_TYPE})')
@@ -354,7 +355,6 @@ def main():
                             'storing local data and configuration.')
     arg_parser.add_argument('--delete-sandbox', action='store_true', help='Delete the persistent VPC & keypair '
                             'created by ec2instance.')
-
     args = arg_parser.parse_args()
 
     if args.show_data_path:
@@ -387,17 +387,13 @@ def main():
     try:
         boto3_session = boto3.session.Session(profile_name=args.profile_name, region_name=args.aws_region)
         ec2_client = boto3_session.client('ec2')
-
-        # Check/provision AWS pre-reqs
-        ami = get_ami(ec2_client, args.ami_identifier, arch=get_arch(args.instance_type))
-        vpc_id = get_vpc(ec2_client)
-        subnet_id = get_subnet(ec2_client, vpc_id)
-        security_group_id = get_security_group(ec2_client, vpc_id)
-        keypair_name, key_path = get_keypair(ec2_client)
+        # Use region-less STS get caller identity API just as a hack to verify boot3 was able to load credentials. This
+        # is important to check so that we can give the right guidance to very inexperienced AWS users.
+        boto3.client('sts').get_caller_identity()
     except botocore.exceptions.NoCredentialsError:
         logging.error(
-            'Unable to locate AWS credentials!\n\n If you\'re not sure what to do, to resolve please follow these '
-            'steps:\n`'
+            'Unable to locate AWS credentials!\n\nIf you\'re not sure what to do, please follow these '
+            'steps to resolve:\n'
             ' - 1.) Install awscli, https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html\n'
             ' - 2.) Run `aws configure` and enter in your AWS access key. How to get an AWS access key is not in '
             'scope of this guide.\n'
@@ -410,6 +406,13 @@ def main():
             'using --region.'
         )
         sys.exit(1)
+
+    # Check/provision AWS pre-reqs
+    ami = get_ami(ec2_client, args.ami_identifier, arch=get_arch(args.instance_type))
+    vpc_id = get_vpc(ec2_client)
+    subnet_id = get_subnet(ec2_client, vpc_id)
+    security_group_id = get_security_group(ec2_client, vpc_id)
+    keypair_name, key_path = get_keypair(ec2_client)
 
     # Launch
     logging.info('Launching instance... (ETA to usability: ~45 seconds)')
