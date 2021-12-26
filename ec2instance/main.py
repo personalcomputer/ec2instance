@@ -330,8 +330,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
     logging.getLogger('botocore').setLevel(logging.WARNING)
     arg_parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description='Quickly launch an EC2 instance for small tasks. The instance\'s '
-                    'lifecycle is tied to the process, enabling easy Ctrl+C instance termination when done.',
+                    'lifecycle is tied to the process,\nenabling easy Ctrl+C instance termination when done.',
         epilog='help & support:\n  https://github.com/personalcomputer/ec2instance/issues'
     )
     arg_parser.add_argument('-t', '--type', type=str, default=DEFAULT_INSTANCE_TYPE, dest='instance_type',

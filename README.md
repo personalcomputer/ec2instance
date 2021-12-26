@@ -46,7 +46,8 @@ optional arguments:
   --show-data-path      Print out the path where ec2instance is storing local data and
                         configuration.
 
-help & support: https://github.com/personalcomputer/ec2instance/issues
+help & support:
+  https://github.com/personalcomputer/ec2instance/issues
 ```
 
 ## Notes
@@ -55,8 +56,8 @@ help & support: https://github.com/personalcomputer/ec2instance/issues
   - 1.) [install awscli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
   - 2.) Run `aws configure` and enter in your AWS access key. How to get an AWS access key is not in scope of this
     guide.
-- Upon running ec2instance for the first time on a new machine, it will tell you it is automatically creating a tiny
-  sandbox in your AWS account to ensure that there are no possible conflicts or security concerns from using
-  ec2instance. This sandbox consists of generating a dedicated fresh VPC and SSH keypair, and these are persisted them
-  between invocations of ec2instance. There is no AWS fee associated with these resources, and their auto-generated
-  names are very obvious and logged to console. Feel free to delete them if you stop using ec2instance.
+- Upon running ec2instance for the first time, it will tell you it is automatically creating a tiny sandbox in your AWS
+  account to ensure that there are no possible conflicts or security concerns from using ec2instance. This sandbox
+  consists of generating a dedicated fresh VPC and SSH keypair, and these are persisted between invocations of
+  ec2instance. There is no AWS fee associated with these resources, and their auto-generated names are obvious and
+  logged to console. Feel free to delete them if you stop using ec2instance.
