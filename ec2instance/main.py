@@ -64,8 +64,9 @@ def get_latest_ubuntu_lts_ami(ec2_client, arch):
     )
     amis = response['Images']
     # sort to get latest ubuntu version with latest creation date
+
     def sorting_key_func(image):
-        ubuntu_version_number = re.search(r'-([\d\.]+)-'+arch, image['Name']).group(1)
+        ubuntu_version_number = re.search(r'-([\d\.]+)-' + arch, image['Name']).group(1)
         image_creation_date = parse_iso8601(image['CreationDate'])
         return float(ubuntu_version_number), image_creation_date
     amis = sorted(amis, key=sorting_key_func, reverse=True)
@@ -327,6 +328,7 @@ def handle_interrupted_launch():
 
 def main():
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
+    logging.getLogger('botocore').setLevel(logging.WARNING)
     arg_parser = argparse.ArgumentParser(
         description='Quickly launch an EC2 instance for small tasks. The instance\'s '
                     'lifecycle is tied to the process, enabling easy Ctrl+C instance termination when done.',
@@ -349,8 +351,7 @@ def main():
     arg_parser.add_argument('--non-interactive', action='store_true', dest='non_interactive',
                             help='By default a shell will be opened in the spawned instance, and the '
                                  'instance will be terminated when the shell is closed. To instead '
-                                 'output ec2 metadata as json and then exit, specify '
-                                 '--non-interactive.')
+                                 'output ec2 metadata as json and then exit, specify --non-interactive.')
     arg_parser.add_argument('--show-data-path', action='store_true', help='Print out the path where ec2instance is '
                             'storing local data and configuration.')
     args = arg_parser.parse_args()

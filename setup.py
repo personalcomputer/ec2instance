@@ -10,7 +10,7 @@ with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='ec2instance',
-    version='1.1',
+    version='1.2',
     description="Quickly launch an EC2 instance for small tasks",
     keywords='ec2instance',
     long_description=long_description,
