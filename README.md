@@ -3,6 +3,9 @@
 ec2instance is the "docker run -it" of AWS EC2. It is a single command that very quickly launches an EC2 instance from
 the CLI and takes care of the legwork to make it immediately usable for you.
 
+## Demo
+
+[![asciicast](https://asciinema.org/a/458558.svg)](https://asciinema.org/a/458558?autoplay=1)
 
 ## Install
 
@@ -45,10 +48,6 @@ optional arguments:
 
 help & support: https://github.com/personalcomputer/ec2instance/issues
 ```
-
-## Demo
-
-(TODO)
 
 ## Notes
 
