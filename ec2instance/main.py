@@ -24,11 +24,11 @@ XDG_CONFIG_HOME = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.confi
 CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, PROGRAM_NAME)
 
 DEFAULT_USER_DATA = '''#!/bin/bash
-# Disable MOTD
 date
+
+# Disable MOTD
 for userdir in /home/*; do touch $userdir/.hushlogin; done
 
-# The rest of this script is for ubuntu only
 if grep -qi "Ubuntu" /etc/issue; then
     apt update -y
 fi
@@ -229,14 +229,18 @@ def get_keypair(ec2_client):
     Returns (keypair_name, key_path)
     """
     keypair_name = slugify(f'{PROGRAM_NAME} {HOSTNAME} {USERNAME} auto-created key')
-    key_path = os.path.join(CONFIG_DIR, 'keypair_name.pem')
+    key_path = os.path.join(CONFIG_DIR, f'{keypair_name}.pem')
     legacy_key_path = os.path.join(CONFIG_DIR, 'key.pem')
     if not os.path.exists(key_path) and os.path.exists(legacy_key_path):
         key_path = legacy_key_path
     keypair_exists = bool(ec2_client.describe_key_pairs(
         Filters=[{'Name': 'key-name', 'Values': [keypair_name]}]
     )['KeyPairs'])  # TODO: Switch to matching the keypair via key fingerprint, not key name.
-    if not keypair_exists:
+    if keypair_exists:
+        if not os.path.exists(key_path):
+            raise ValueError('Not able to handle this situation - keypair matching this hostname is already uploaded, '
+                             'but does not exist locally. Aborting')
+    else:
         if os.path.exists(key_path):
             logging.info('Uploading prerequisite keypair...')
             with open(key_path, 'rb') as f:
@@ -246,8 +250,11 @@ def get_keypair(ec2_client):
                 PublicKeyMaterial=pub_key
             )
         else:
-            logging.info('Creating prerequisite keypair...')
-            response = ec2_client.create_key_pair(KeyName=keypair_name)
+            logging.info('Generating prerequisite SSH keypair...')
+            response = ec2_client.create_key_pair(KeyName=keypair_name, KeyType='ed25519')
+            # AWS create_key_pair API is a secure way to generate a brand new SSH private/public keypair without relying
+            # upon e.g. openssh being installed locally. docs:
+            # https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateKeyPair.html
             os.makedirs(os.path.dirname(key_path), exist_ok=True)
             with open(os.open(key_path, os.O_CREAT | os.O_WRONLY, 0o600), 'w') as f:
                 f.write(response['KeyMaterial'])
@@ -450,8 +457,7 @@ def main():
     os.system(automatic_ssh_cmd)
 
     # Wait for SIGTERM/SIGINT
-    logging.info('Instance is still running. Press CTRL+C to terminate, or the command to SSH again is:')
-    print(ssh_cmd)
+    logging.info(f'Instance is still running. Press CTRL+C to terminate, or the command to SSH again is: {ssh_cmd}')
     while True:
         signal.pause()
 
