@@ -30,6 +30,7 @@ date
 for userdir in /home/*; do touch $userdir/.hushlogin; done
 
 if grep -qi "Ubuntu" /etc/issue; then
+    # Pull latest package repository metadata
     apt update -y
 fi
 '''
@@ -242,6 +243,8 @@ def get_keypair(ec2_client):
                              'but does not exist locally. Aborting')
     else:
         if os.path.exists(key_path):
+            # Note: this flow should be extremely rare. Can only happen if the user MANUALLY created an SSH key
+            # SPECIFICALLY for ec2instance, by placing it in ec2instance_cmd folder.
             logging.info('Uploading prerequisite keypair...')
             with open(key_path, 'rb') as f:
                 pub_key = RSA.importKey(f.read()).publickey().exportKey(format='OpenSSH').decode()
@@ -333,6 +336,11 @@ def handle_interrupted_launch():
     quit = True
 
 
+def path_collapseuser(path):
+    """ The inverse of os.path.expanduser """
+    return path.replace(os.path.expanduser('~'), '~', 1)
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
     logging.getLogger('botocore').setLevel(logging.WARNING)
@@ -348,8 +356,9 @@ def main():
                             help='EC2 AMI id. You may also pass "ubuntu" as a shortcut to get the latest Ubuntu LTS, or'
                                  ' "amazonlinux" as a shortcut to get the latest Amazon Linux. (default: ubuntu)')
     arg_parser.add_argument('-f', '--user-data', type=str, default=DEFAULT_USER_DATA_PATH, dest='user_data_filename',
-                            help='EC2 user data. Path to a shell script. AWS will upload and run this script '
-                                 f'on the instance immediately after launch. (default: {DEFAULT_USER_DATA_PATH})')
+                            help='EC2 "user data" script. Path to a shell script. AWS will upload and run this script '
+                                 f'on the instance immediately after launch. '
+                                 f'(default: {path_collapseuser(DEFAULT_USER_DATA_PATH)})')
     arg_parser.add_argument('--volume-size', type=int, default=None, dest='volume_size',
                             help='Root EBS volume size (GiB).')
     arg_parser.add_argument('--profile', type=str, default=None, dest='profile_name',
@@ -448,7 +457,10 @@ def main():
 
     # Launch Shell
     logging.info('Launching shell...')
-    time.sleep(6)  # Wait an extra six seconds for the userdata script to run, to silence MOTD.
+    # Wait an extra seven seconds to give a chance for the userdata script to run, to try to silence the MOTD. This is
+    # really inelegant and doesn't work reliably. I'm not sure how to handle this problem. The MOTD is completely
+    # undesirable for the ec2instance usecases.
+    # time.sleep(7)
     ssh_login_user = guess_ami_default_username(args.ami_identifier)
     ssh_args = [get_ssh_bin(), '-i', key_path, f'{ssh_login_user}@{instance_ip}']
     ssh_cmd = ' '.join(ssh_args)

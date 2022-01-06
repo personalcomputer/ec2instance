@@ -32,9 +32,9 @@ optional arguments:
                         Ubuntu LTS, or "amazonlinux" as a shortcut to get the latest Amazon Linux.
                         (default: ubuntu)
   -f USER_DATA_FILENAME, --user-data USER_DATA_FILENAME
-                        EC2 user data. Path to a shell script. AWS will upload and run this script
-                        on the instance immediately after launch. (default:
-                        /home/john/.config/ec2instance_cmd/user_data_scripts/default.sh)
+                        EC2 "user data" script. Path to a shell script. AWS will upload and run
+                        this script on the instance immediately after launch. (default:
+                        ~/.config/ec2instance_cmd/user_data_scripts/default.sh)
   --volume-size VOLUME_SIZE
                         Root EBS volume size (GiB).
   --profile PROFILE_NAME
