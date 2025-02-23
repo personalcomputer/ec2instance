@@ -14,7 +14,8 @@ import unicodedata
 
 import boto3
 import botocore.exceptions
-from Cryptodome.PublicKey import RSA
+
+from cryptography.hazmat.primitives import serialization
 from iso8601 import parse_date as parse_iso8601
 
 PROGRAM_NAME = 'ec2instance_cmd'
@@ -39,6 +40,17 @@ DEFAULT_USER_DATA_PATH = os.path.join(USER_DATA_SCRIPTS_LIBRARY_PATH, 'default.s
 DEFAULT_INSTANCE_TYPE = 't3a.micro'
 
 
+def dump_json_with_datetimes(obj, **kwargs):
+    return json.dumps(obj, default=_json_object_serializer, **kwargs)
+
+
+def _json_object_serializer(obj):
+    if hasattr(obj, "isoformat"):
+        assert obj.tzinfo is not None
+        return obj.astimezone(datetime.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+    return json.JSONEncoder.default(obj)
+
+
 def slugify(value):
     """
     Limits the text to just letters + numbers, with spaces converted to "-".
@@ -61,10 +73,10 @@ def get_latest_ubuntu_lts_ami(ec2_client, arch):
                 'Values': ['*LTS*'],
             },
         ],
-        Owners=['099720109477'],  # Canonical Group Limited
+        Owners=['099720109477'],  # Canonical Group Limited's AWS ID
     )
     amis = response['Images']
-    # sort to get latest ubuntu version with latest creation date
+    # Sort to get latest ubuntu version via getting the latest creation date
 
     def sorting_key_func(image):
         ubuntu_version_number = re.search(r'-([\d\.]+)-' + arch, image['Name']).group(1)
@@ -243,11 +255,14 @@ def get_keypair(ec2_client):
                              'but does not exist locally. Aborting')
     else:
         if os.path.exists(key_path):
-            # Note: this flow should be extremely rare. Can only happen if the user MANUALLY created an SSH key
-            # SPECIFICALLY for ec2instance, by placing it in ec2instance_cmd folder.
+            # Note: this flow happens if the key got deleted from AWS somehow, or if this is a new AWS region, or the
+            # user manually created an SSH key specifically for ec2instance, by placing it in ec2instance_cmd folder.
             logging.info('Uploading prerequisite keypair...')
             with open(key_path, 'rb') as f:
-                pub_key = RSA.importKey(f.read()).publickey().exportKey(format='OpenSSH').decode()
+                priv_key = serialization.load_ssh_private_key(f.read(), password=None)
+                pub_key = priv_key.public_key().public_bytes(
+                    encoding=serialization.Encoding.OpenSSH, format=serialization.PublicFormat.OpenSSH
+                ).decode()
             ec2_client.import_key_pair(
                 KeyName=keypair_name,
                 PublicKeyMaterial=pub_key
@@ -360,7 +375,7 @@ def main():
                                  f'on the instance immediately after launch. '
                                  f'(default: {path_collapseuser(DEFAULT_USER_DATA_PATH)})')
     arg_parser.add_argument('--volume-size', type=int, default=None, dest='volume_size',
-                            help='Root EBS volume size (GiB).')
+                            help='Root EBS volume size (GiB). (default is normally approximately 8GiB)')
     arg_parser.add_argument('--profile', type=str, default=None, dest='profile_name',
                             help='AWS credentials profile name to use.')
     arg_parser.add_argument('--region', type=str, default=None, dest='aws_region',
@@ -452,7 +467,7 @@ def main():
     logging.info('Instance is up!')
 
     if args.non_interactive:
-        print(json.dumps(instance, indent=2))
+        print(dump_json_with_datetimes(instance, indent=2))
         return
 
     # Launch Shell
