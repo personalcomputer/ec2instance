@@ -23,20 +23,20 @@ usage: ec2instance [-h] [-t INSTANCE_TYPE] [-i AMI_IDENTIFIER] [-f USER_DATA_FIL
 Quickly launch an EC2 instance for small tasks. The instance's lifecycle is tied to the process,
 enabling easy Ctrl+C instance termination when done.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  -t INSTANCE_TYPE, --type INSTANCE_TYPE
+  -t, --type INSTANCE_TYPE
                         EC2 instance type. (default: t3a.micro)
-  -i AMI_IDENTIFIER, --ami AMI_IDENTIFIER
+  -i, --ami AMI_IDENTIFIER
                         EC2 AMI id. You may also pass "ubuntu" as a shortcut to get the latest
                         Ubuntu LTS, or "amazonlinux" as a shortcut to get the latest Amazon Linux.
                         (default: ubuntu)
-  -f USER_DATA_FILENAME, --user-data USER_DATA_FILENAME
+  -f, --user-data USER_DATA_FILENAME
                         EC2 "user data" script. Path to a shell script. AWS will upload and run
                         this script on the instance immediately after launch. (default:
                         ~/.config/ec2instance_cmd/user_data_scripts/default.sh)
   --volume-size VOLUME_SIZE
-                        Root EBS volume size (GiB).
+                        Root EBS volume size (GiB). (default is normally approximately 8GiB)
   --profile PROFILE_NAME
                         AWS credentials profile name to use.
   --region AWS_REGION   Specific AWS region to use.

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ec2instance"
+version = "1.6"
+description = "Launch new EC2 instances easily and quickly with one command"
+readme = "README.md"
+authors = [
+    { name = "John Miller", email = "john@johngm.com" },
+]
+requires-python = ">=3.7.0"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+    'boto3',
+    'iso8601',
+    'cryptography',
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "coverage",
+    "flake8",
+    "flake8-pyproject",
+    "hatchling",
+    "pytest",
+]
+
+
+[project.urls]
+Homepage = "https://github.com/personalcomputer/ec2instance"
+
+[project.scripts]
+ec2instance = "ec2instance.main:main"
+
+[tool.isort]
+line_length = 120
+default_section = "THIRDPARTY"
+order_by_type = true
+
+[tool.black]
+line-length = 120
+
+[tool.flake8]
+max-line-length = 120
+ignore = ["E501", "F403", "W503", "SIM106"]
