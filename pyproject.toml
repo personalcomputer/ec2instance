@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ec2instance"
-version = "1.6"
+version = "1.7"
 description = "Launch new EC2 instances easily and quickly with one command"
 readme = "README.md"
 authors = [
@@ -44,6 +44,7 @@ ec2instance = "ec2instance.main:main"
 line_length = 120
 default_section = "THIRDPARTY"
 order_by_type = true
+profile = "black"
 
 [tool.black]
 line-length = 120
