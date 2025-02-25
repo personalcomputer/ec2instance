@@ -24,7 +24,22 @@ def test_launch_instance(ec2_client):
     vpc = ec2_client.create_vpc(CidrBlock="172.30.0.0/16")
     vpc_id = vpc['Vpc']['VpcId']
 
-    # Create resources
+    # Register AMI in mock environment
+    ec2_client.register_image(
+        Name="ubuntu-focal-20.04-amd64-server",
+        ImageId=ami,
+        RootDeviceName="/dev/sda1",
+        BlockDeviceMappings=[
+            {
+                "DeviceName": "/dev/sda1",
+                "Ebs": {
+                    "VolumeSize": volume_size,
+                    "DeleteOnTermination": True,
+                    "VolumeType": "gp2",
+                },
+            }
+        ],
+    )
     ec2_client.create_subnet(VpcId=vpc_id, CidrBlock="172.30.90.0/24")
     ec2_client.create_security_group(GroupName="test-sg", Description="test", VpcId=vpc_id)
     ec2_client.create_key_pair(KeyName=keypair_name)
