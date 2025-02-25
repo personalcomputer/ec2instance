@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch
-from moto import mock_aws
+from moto import mock_ec2
 import boto3
-from ec2instance.main import main
+from ec2instance.main import main, launch_instance
 
 
 @pytest.fixture
