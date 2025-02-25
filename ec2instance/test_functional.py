@@ -12,7 +12,7 @@ def ec2_client():
 
 def test_launch_instance(ec2_client):
     # Mock data
-    ami = "ami-12345678"
+    ami = "ami-0819a13b911cc3dd0"
     subnet_id = "subnet-12345678"
     security_group_id = "sg-12345678"
     instance_type = "t3.micro"
