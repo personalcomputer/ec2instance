@@ -21,7 +21,7 @@ def test_launch_instance(ec2_client):
     volume_size = 10
 
     # Create resources
-    ec2_client.create_subnet(SubnetId=subnet_id, VpcId="vpc-12345678", CidrBlock="172.30.90.0/24")
+    ec2_client.create_subnet(VpcId="vpc-12345678", CidrBlock="172.30.90.0/24")
     ec2_client.create_security_group(GroupName="test-sg", Description="test", VpcId="vpc-12345678")
     ec2_client.create_key_pair(KeyName=keypair_name)
 
