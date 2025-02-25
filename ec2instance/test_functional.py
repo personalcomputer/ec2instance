@@ -10,7 +10,8 @@ def ec2_client():
         client = boto3.client("ec2", region_name="us-west-2")
         yield client
 
-def test_cli_launch_default(ec2_client, capsys):
+@mock_aws
+def test_cli_launch_default(capsys):
     # Simulate CLI command to launch an instance with default settings
     cli_command = "ec2instance.main"
     with patch("sys.argv", cli_command.split()):
@@ -18,7 +19,8 @@ def test_cli_launch_default(ec2_client, capsys):
     captured = capsys.readouterr()
     assert "Instance Launched!" in captured.out
 
-def test_cli_launch_specific_type_non_interactive(ec2_client, capsys):
+@mock_aws
+def test_cli_launch_specific_type_non_interactive(capsys):
     # Simulate CLI command to launch an instance with a specific type and non-interactive mode
     cli_command = "ec2instance.main --type t2.micro --non-interactive"
     with patch("sys.argv", cli_command.split()):
@@ -27,7 +29,8 @@ def test_cli_launch_specific_type_non_interactive(ec2_client, capsys):
     assert "Instance Launched!" in captured.out
     assert "{" in captured.out  # Check for JSON output
 
-def test_cli_launch_custom_user_data(ec2_client, capsys):
+@mock_aws
+def test_cli_launch_custom_user_data(capsys):
     # Simulate CLI command to launch an instance with a custom user data script
     cli_command = "ec2instance.main --user-data custom_script.sh"
     with patch("sys.argv", cli_command.split()):
