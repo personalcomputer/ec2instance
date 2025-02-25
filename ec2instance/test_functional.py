@@ -12,7 +12,7 @@ def ec2_client():
 
 def test_cli_launch_default(ec2_client, capsys):
     # Simulate CLI command to launch an instance with default settings
-    cli_command = "python -m ec2instance.main"
+    cli_command = "ec2instance.main"
     with patch("sys.argv", cli_command.split()):
         main()
     captured = capsys.readouterr()
@@ -20,7 +20,7 @@ def test_cli_launch_default(ec2_client, capsys):
 
 def test_cli_launch_specific_type_non_interactive(ec2_client, capsys):
     # Simulate CLI command to launch an instance with a specific type and non-interactive mode
-    cli_command = "python -m ec2instance.main --type t2.micro --non-interactive"
+    cli_command = "ec2instance.main --type t2.micro --non-interactive"
     with patch("sys.argv", cli_command.split()):
         main()
     captured = capsys.readouterr()
@@ -29,7 +29,7 @@ def test_cli_launch_specific_type_non_interactive(ec2_client, capsys):
 
 def test_cli_launch_custom_user_data(ec2_client, capsys):
     # Simulate CLI command to launch an instance with a custom user data script
-    cli_command = "python -m ec2instance.main --user-data custom_script.sh"
+    cli_command = "ec2instance.main --user-data custom_script.sh"
     with patch("sys.argv", cli_command.split()):
         main()
     captured = capsys.readouterr()
