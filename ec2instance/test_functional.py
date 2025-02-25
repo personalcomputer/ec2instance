@@ -1,18 +1,18 @@
 import pytest
 from unittest.mock import patch
-from moto import mock_ec2
+from moto import mock_aws
 import boto3
 from ec2instance.main import main, launch_instance
 
 
 @pytest.fixture
 def ec2_client():
-    with mock_ec2():
+    with mock_aws():
         client = boto3.client("ec2", region_name="us-west-2")
         yield client
 
 
-@mock_ec2
+@mock_aws
 def test_cli_launch_default(capsys):
     # Mock the launch_instance function
     with patch("ec2instance.main.launch_instance") as mock_launch_instance:
@@ -35,7 +35,7 @@ def test_cli_launch_default(capsys):
     assert "Instance Launched!" in captured.out
 
 
-@mock_ec2
+@mock_aws
 def test_cli_launch_specific_type_non_interactive(capsys):
     # Mock the launch_instance function
     with patch("ec2instance.main.launch_instance") as mock_launch_instance:
@@ -60,7 +60,7 @@ def test_cli_launch_specific_type_non_interactive(capsys):
     assert "{" in captured.out  # Check for JSON output
 
 
-@mock_ec2
+@mock_aws
 def test_cli_launch_custom_user_data(capsys):
     # Mock the launch_instance function
     with patch("ec2instance.main.launch_instance") as mock_launch_instance:
