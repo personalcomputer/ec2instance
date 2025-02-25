@@ -30,6 +30,7 @@ dev = [
     "flake8",
     "flake8-pyproject",
     "hatchling",
+    "moto>=4.2.14",
     "pytest",
 ]
 
