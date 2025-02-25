@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from moto import mock_ec2
+from moto import mock_aws
 import boto3
 from ec2instance.main import launch_instance, get_ami, get_vpc, get_subnet, get_security_group, get_keypair
 
