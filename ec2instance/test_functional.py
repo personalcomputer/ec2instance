@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 from moto import mock_aws
 import boto3
-from ec2instance.main import main, launch_instance
+from ec2instance.main import main
 
 
 @pytest.fixture
@@ -12,8 +12,21 @@ def ec2_client():
         yield client
 
 
-@mock_aws
+@mock_ec2
 def test_cli_launch_default(capsys):
+    # Mock the launch_instance function
+    with patch("ec2instance.main.launch_instance") as mock_launch_instance:
+        mock_launch_instance.return_value = {
+            "InstanceId": "i-1234567890abcdef0",
+            "InstanceType": "t3.micro",
+            "PublicIpAddress": "192.0.2.0"
+        }
+        # Simulate CLI command to launch an instance with default settings
+        cli_command = "ec2instance.main"
+        with patch("sys.argv", cli_command.split()):
+            main()
+        captured = capsys.readouterr()
+        assert "Instance Launched!" in captured.out
     # Simulate CLI command to launch an instance with default settings
     cli_command = "ec2instance.main"
     with patch("sys.argv", cli_command.split()):
@@ -22,8 +35,22 @@ def test_cli_launch_default(capsys):
     assert "Instance Launched!" in captured.out
 
 
-@mock_aws
+@mock_ec2
 def test_cli_launch_specific_type_non_interactive(capsys):
+    # Mock the launch_instance function
+    with patch("ec2instance.main.launch_instance") as mock_launch_instance:
+        mock_launch_instance.return_value = {
+            "InstanceId": "i-1234567890abcdef0",
+            "InstanceType": "t2.micro",
+            "PublicIpAddress": "192.0.2.0"
+        }
+        # Simulate CLI command to launch an instance with a specific type and non-interactive mode
+        cli_command = "ec2instance.main --type t2.micro --non-interactive"
+        with patch("sys.argv", cli_command.split()):
+            main()
+        captured = capsys.readouterr()
+        assert "Instance Launched!" in captured.out
+        assert "{" in captured.out  # Check for JSON output
     # Simulate CLI command to launch an instance with a specific type and non-interactive mode
     cli_command = "ec2instance.main --type t2.micro --non-interactive"
     with patch("sys.argv", cli_command.split()):
@@ -33,8 +60,21 @@ def test_cli_launch_specific_type_non_interactive(capsys):
     assert "{" in captured.out  # Check for JSON output
 
 
-@mock_aws
+@mock_ec2
 def test_cli_launch_custom_user_data(capsys):
+    # Mock the launch_instance function
+    with patch("ec2instance.main.launch_instance") as mock_launch_instance:
+        mock_launch_instance.return_value = {
+            "InstanceId": "i-1234567890abcdef0",
+            "InstanceType": "t3.micro",
+            "PublicIpAddress": "192.0.2.0"
+        }
+        # Simulate CLI command to launch an instance with a custom user data script
+        cli_command = "ec2instance.main --user-data custom_script.sh"
+        with patch("sys.argv", cli_command.split()):
+            main()
+        captured = capsys.readouterr()
+        assert "Instance Launched!" in captured.out
     # Simulate CLI command to launch an instance with a custom user data script
     cli_command = "ec2instance.main --user-data custom_script.sh"
     with patch("sys.argv", cli_command.split()):
