@@ -27,7 +27,6 @@ def test_launch_instance(ec2_client):
     # Register AMI in mock environment
     ec2_client.register_image(
         Name="ubuntu-focal-20.04-amd64-server",
-        ImageId=ami,
         RootDeviceName="/dev/sda1",
         BlockDeviceMappings=[
             {
