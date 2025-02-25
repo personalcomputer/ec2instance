@@ -12,7 +12,6 @@ def ec2_client():
 
 def test_launch_instance(ec2_client):
     # Mock data
-    subnet_id = "subnet-12345678"
     instance_type = "t3.micro"
     keypair_name = "test-keypair"
     user_data = "#!/bin/bash\necho 'Hello World'"
@@ -37,7 +36,8 @@ def test_launch_instance(ec2_client):
             }
         ],
     )['ImageId']
-    ec2_client.create_subnet(VpcId=vpc_id, CidrBlock="172.30.90.0/24")
+    subnet = ec2_client.create_subnet(VpcId=vpc_id, CidrBlock="172.30.90.0/24")
+    subnet_id = subnet['Subnet']['SubnetId']
     security_group = ec2_client.create_security_group(GroupName="test-sg", Description="test", VpcId=vpc_id)
     security_group_id = security_group['GroupId']
     ec2_client.create_key_pair(KeyName=keypair_name)
