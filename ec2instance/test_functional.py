@@ -14,8 +14,9 @@ def ec2_client():
 
 @mock_aws
 def test_cli_launch_default(capsys):
-    # Mock the launch_instance function
-    with patch("ec2instance.main.launch_instance") as mock_launch_instance:
+    # Mock the launch_instance and terminate_instance functions
+    with patch("ec2instance.main.launch_instance") as mock_launch_instance, \
+         patch("ec2instance.main.terminate_instance") as mock_terminate_instance:
         mock_launch_instance.return_value = {
             "InstanceId": "i-1234567890abcdef0",
             "InstanceType": "t3.micro",
@@ -38,8 +39,9 @@ def test_cli_launch_default(capsys):
 
 @mock_aws
 def test_cli_launch_specific_type_non_interactive(capsys):
-    # Mock the launch_instance function
-    with patch("ec2instance.main.launch_instance") as mock_launch_instance:
+    # Mock the launch_instance and terminate_instance functions
+    with patch("ec2instance.main.launch_instance") as mock_launch_instance, \
+         patch("ec2instance.main.terminate_instance") as mock_terminate_instance:
         mock_launch_instance.return_value = {
             "InstanceId": "i-1234567890abcdef0",
             "InstanceType": "t2.micro",
@@ -64,8 +66,9 @@ def test_cli_launch_specific_type_non_interactive(capsys):
 
 @mock_aws
 def test_cli_launch_custom_user_data(capsys):
-    # Mock the launch_instance function
-    with patch("ec2instance.main.launch_instance") as mock_launch_instance:
+    # Mock the launch_instance and terminate_instance functions
+    with patch("ec2instance.main.launch_instance") as mock_launch_instance, \
+         patch("ec2instance.main.terminate_instance") as mock_terminate_instance:
         mock_launch_instance.return_value = {
             "InstanceId": "i-1234567890abcdef0",
             "InstanceType": "t3.micro",
@@ -91,7 +94,10 @@ def test_launch_instance(ec2_client):
     # Mock data
     instance_type = "t3.micro"
     keypair_name = "test-keypair"
-    user_data = "#!/bin/bash\necho 'Hello World'"
+    user_data = "#!/bin/bash\necho 'Hello World'\n"
+    # Mock the custom user data script
+    with open("custom_script.sh", "w") as f:
+        f.write(user_data)
     volume_size = 10
 
     # Create VPC
