@@ -7,7 +7,7 @@ from ec2instance.main import main, launch_instance
 
 @pytest.fixture
 def ec2_client():
-    with mock_aws():
+    with mock_ec2():
         client = boto3.client("ec2", region_name="us-west-2")
         yield client
 
