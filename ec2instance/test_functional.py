@@ -20,9 +20,13 @@ def test_launch_instance(ec2_client):
     user_data = "#!/bin/bash\necho 'Hello World'"
     volume_size = 10
 
+    # Create VPC
+    vpc = ec2_client.create_vpc(CidrBlock="172.30.0.0/16")
+    vpc_id = vpc['Vpc']['VpcId']
+
     # Create resources
-    ec2_client.create_subnet(VpcId="vpc-12345678", CidrBlock="172.30.90.0/24")
-    ec2_client.create_security_group(GroupName="test-sg", Description="test", VpcId="vpc-12345678")
+    ec2_client.create_subnet(VpcId=vpc_id, CidrBlock="172.30.90.0/24")
+    ec2_client.create_security_group(GroupName="test-sg", Description="test", VpcId=vpc_id)
     ec2_client.create_key_pair(KeyName=keypair_name)
 
     # Launch instance
