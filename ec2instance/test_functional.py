@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 from moto import mock_aws
 import boto3
-from ec2instance.main import main, launch_instance
+
 
 
 @pytest.fixture
@@ -21,6 +21,7 @@ def test_cli_launch_default(capsys):
             "InstanceType": "t3.micro",
             "PublicIpAddress": "192.0.2.0"
         }
+        from ec2instance.main import main
         # Simulate CLI command to launch an instance with default settings
         cli_command = "ec2instance.main"
         with patch("sys.argv", cli_command.split()):
@@ -44,6 +45,7 @@ def test_cli_launch_specific_type_non_interactive(capsys):
             "InstanceType": "t2.micro",
             "PublicIpAddress": "192.0.2.0"
         }
+        from ec2instance.main import main
         # Simulate CLI command to launch an instance with a specific type and non-interactive mode
         cli_command = "ec2instance.main --type t2.micro --non-interactive"
         with patch("sys.argv", cli_command.split()):
@@ -69,6 +71,7 @@ def test_cli_launch_custom_user_data(capsys):
             "InstanceType": "t3.micro",
             "PublicIpAddress": "192.0.2.0"
         }
+        from ec2instance.main import main
         # Simulate CLI command to launch an instance with a custom user data script
         cli_command = "ec2instance.main --user-data custom_script.sh"
         with patch("sys.argv", cli_command.split()):
@@ -84,6 +87,7 @@ def test_cli_launch_custom_user_data(capsys):
 
 
 def test_launch_instance(ec2_client):
+    from ec2instance.main import launch_instance
     # Mock data
     instance_type = "t3.micro"
     keypair_name = "test-keypair"
