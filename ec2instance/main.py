@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
+import json
 import logging
 import os
 import re
@@ -9,12 +10,10 @@ import signal
 import socket
 import sys
 import time
-import json
 import unicodedata
 
 import boto3
 import botocore.exceptions
-
 from cryptography.hazmat.primitives import serialization
 from iso8601 import parse_date as parse_iso8601
 

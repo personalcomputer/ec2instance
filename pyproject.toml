@@ -26,11 +26,17 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black",
+    "codespell>=2.2.5",
     "coverage",
     "flake8",
     "flake8-pyproject",
     "hatchling",
+    "ipdb>=0.13.13",
+    "isort>=5.11.5",
+    "moto>=4.2.14",
+    "mypy>=1.4.1",
     "pytest",
+    "ruff>=0.11.5",
 ]
 
 
@@ -42,7 +48,7 @@ ec2instance = "ec2instance.main:main"
 
 [tool.isort]
 line_length = 120
-default_section = "THIRDPARTY"
+default_section = "THIRDPARTY" # codespell:ignore
 order_by_type = true
 profile = "black"
 
