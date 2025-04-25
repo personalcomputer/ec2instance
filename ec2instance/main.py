@@ -29,14 +29,15 @@ date
 # Disable MOTD
 for userdir in /home/*; do touch $userdir/.hushlogin; done
 
+# Pull latest package repository metadata
 if grep -qi "Ubuntu" /etc/issue; then
-    # Pull latest package repository metadata
     apt update -y
 fi
 """
 USER_DATA_SCRIPTS_LIBRARY_PATH = os.path.join(CONFIG_DIR, "user_data_scripts")
 DEFAULT_USER_DATA_PATH = os.path.join(USER_DATA_SCRIPTS_LIBRARY_PATH, "default.sh")
 DEFAULT_INSTANCE_TYPE = "t3a.micro"
+DEFAULT_AMI = "ubuntu"
 
 
 def dump_json_with_datetimes(obj, **kwargs):
@@ -275,7 +276,7 @@ def get_keypair(ec2_client):
             logging.info("Generating prerequisite SSH keypair...")
             response = ec2_client.create_key_pair(KeyName=keypair_name, KeyType="ed25519")
             # AWS create_key_pair API is a secure way to generate a brand new SSH private/public keypair without relying
-            # upon e.g. openssh being installed locally. docs:
+            # upon e.g. OpenSSH being installed locally. docs:
             # https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateKeyPair.html
             os.makedirs(os.path.dirname(key_path), exist_ok=True)
             with open(os.open(key_path, os.O_CREAT | os.O_WRONLY, 0o600), "w") as f:
@@ -377,10 +378,10 @@ def main():
         "-i",
         "--ami",
         type=str,
-        default="ubuntu",
+        default=DEFAULT_AMI,
         dest="ami_identifier",
         help='EC2 AMI id. You may also pass "ubuntu" as a shortcut to get the latest Ubuntu LTS, or'
-        ' "amazonlinux" as a shortcut to get the latest Amazon Linux. (default: ubuntu)',
+        f' "amazonlinux" as a shortcut to get the latest Amazon Linux. (default: {DEFAULT_AMI})',
     )
     arg_parser.add_argument(
         "-f",
@@ -404,17 +405,20 @@ def main():
     )
     arg_parser.add_argument("--region", type=str, default=None, dest="aws_region", help="Specific AWS region to use.")
     arg_parser.add_argument(
+        "-d",
+        "--detach",
         "--non-interactive",
+        "--json",
         action="store_true",
-        dest="non_interactive",
-        help="By default a shell will be opened in the spawned instance, and the "
+        dest="detach",
+        help="By default an interactive shell will be opened in the spawned instance, and the "
         "instance will be terminated when the shell is closed. To instead "
-        "output ec2 metadata as json and then exit, specify --non-interactive.",
+        "output ec2 metadata as json and then detach, specify --detach.",
     )
     arg_parser.add_argument(
         "--show-data-path",
         action="store_true",
-        help="Print out the path where ec2instance is " "storing local data and configuration.",
+        help="Print out the path where ec2instance is storing local data and configuration.",
     )
     args = arg_parser.parse_args()
 
@@ -498,7 +502,7 @@ def main():
     wait_until_accepts_connection(ip=instance_ip, port=22)
     logging.info("Instance is up!")
 
-    if args.non_interactive:
+    if args.detach:
         print(dump_json_with_datetimes(instance, indent=2))
         return
 

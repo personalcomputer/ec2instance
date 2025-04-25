@@ -39,12 +39,16 @@ dev = [
     "ruff>=0.11.5",
 ]
 
-
 [project.urls]
 Homepage = "https://github.com/personalcomputer/ec2instance"
 
 [project.scripts]
 ec2instance = "ec2instance.main:main"
+
+[tool.hatch.build]
+only-include = [
+    "ec2instance",
+]
 
 [tool.isort]
 line_length = 120
