@@ -61,23 +61,34 @@ def slugify(value):
     return re.sub(r"[-\s]+", "-", value)
 
 
-def get_latest_ubuntu_lts_ami(ec2_client, arch):
+def get_latest_ubuntu_ami(ec2_client, arch):
     response = ec2_client.describe_images(
         Filters=[
             {
                 "Name": "name",
-                "Values": [f"ubuntu/images/hvm-ssd/ubuntu-*-{arch}-server-*"],
+                "Values": [f"ubuntu/images/*/ubuntu-*-{arch}-server-*"],
             },
-            {
-                "Name": "description",
-                "Values": ["*LTS*"],
-            },
+            # {
+            #     "Name": "description",
+            #     "Values": ["*LTS*"],
+            # }, # Why is this no longer supported by Canonical?
         ],
         Owners=["099720109477"],  # Canonical Group Limited's AWS ID
     )
     amis = response["Images"]
-    # Sort to get latest ubuntu version via getting the latest creation date
 
+    # Filter to just LTS versions
+    lts_amis = []
+    for image in amis:
+        match = re.search(r"-([\d]+)\.([\d]+)-" + arch, image["Name"])
+        if match:
+            major, minor = match.groups()
+            if int(major) % 2 == 0 and minor == "04":
+                lts_amis.append(image)
+    if lts_amis:
+        amis = lts_amis
+
+    # Sort to get latest ubuntu version via getting the latest creation date
     def sorting_key_func(image):
         ubuntu_version_number = re.search(r"-([\d\.]+)-" + arch, image["Name"]).group(1)
         image_creation_date = parse_iso8601(image["CreationDate"])
@@ -97,7 +108,7 @@ def get_latest_amazonlinux_ami(ec2_client, arch):
         Filters=[
             {
                 "Name": "name",
-                "Values": [f"amzn2-ami-hvm-*-{arch}-gp2"],
+                "Values": [f"amzn2-ami-hvm-*-{arch}-*"],
             },
             {
                 "Name": "state",
@@ -115,7 +126,7 @@ def get_latest_amazonlinux_ami(ec2_client, arch):
 
 def get_ami(ec2_client, ami_identifier, arch):
     if ami_identifier == "ubuntu":
-        return get_latest_ubuntu_lts_ami(ec2_client, arch)
+        return get_latest_ubuntu_ami(ec2_client, arch)
     elif ami_identifier == "amazonlinux":
         return get_latest_amazonlinux_ami(ec2_client, arch)
     else:
