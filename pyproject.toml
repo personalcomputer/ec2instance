@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ec2instance"
-version = "1.8"
+version = "1.9"
 description = "Launch new EC2 instances easily and quickly with one command"
 readme = "README.md"
 authors = [
