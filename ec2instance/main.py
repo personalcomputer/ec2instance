@@ -295,7 +295,7 @@ def get_keypair(ec2_client):
     return keypair_name, key_path
 
 
-def launch_instance(ec2_client, ami, subnet_id, security_group_id, instance_type, keypair_name, user_data, volume_size):
+def launch_instance(ec2_client, ami, subnet_id, security_group_id, instance_type, keypair_name, user_data, volume_size, spot):
     # Prepare RunInstances configuration
     ec2_instance_name = f"{PROGRAM_NAME} {HOSTNAME} {USERNAME} {datetime.datetime.utcnow().isoformat()}"
     run_instances_kwargs = {
@@ -311,6 +311,8 @@ def launch_instance(ec2_client, ami, subnet_id, security_group_id, instance_type
     }
     if re.match(r"^t\da?\.", instance_type):
         run_instances_kwargs["CreditSpecification"] = {"CpuCredits": "unlimited"}
+    if spot:
+        run_instances_kwargs["InstanceMarketOptions"] = {"MarketType": "spot"}
     if volume_size is not None:
         block_device_mappings = ec2_client.describe_images(ImageIds=[ami])["Images"][0]["BlockDeviceMappings"]
         block_device_mappings[0]["Ebs"]["VolumeSize"] = volume_size
@@ -427,6 +429,15 @@ def main():
         "output ec2 metadata as json and then detach, specify --detach.",
     )
     arg_parser.add_argument(
+        "--int",
+        "--interruptible",
+        "--spot",
+        action="store_true",
+        dest="spot",
+        help="Request a Spot Instance instead of an On-Demand Instance. Cheaper, but may be "
+        "interrupted by AWS with only ~2 minutes notice.",
+    )
+    arg_parser.add_argument(
         "--show-data-path",
         action="store_true",
         help="Print out the path where ec2instance is storing local data and configuration.",
@@ -486,6 +497,8 @@ def main():
 
     # Launch
     logging.info("Launching instance... (ETA to usability: ~45 seconds)")
+    if args.spot:
+        logging.warning("Spot instance requested. AWS may interrupt it with only ~2 minutes notice.")
     signal.signal(signal.SIGINT, lambda a, b: handle_interrupted_launch())
     signal.signal(signal.SIGTERM, lambda a, b: handle_interrupted_launch())
     instance = launch_instance(
@@ -497,6 +510,7 @@ def main():
         keypair_name=keypair_name,
         user_data=user_data,
         volume_size=args.volume_size,
+        spot=args.spot,
     )
     instance_id = instance["InstanceId"]
     instance_ip = instance["PublicIpAddress"]
@@ -510,6 +524,10 @@ def main():
         f"Instance Launched! ({instance_id}) Waiting for instance to finish booting... "
         "(ETA to usability: ~25 seconds)"
     )
+    ssh_login_user = guess_ami_default_username(args.ami_identifier)
+    ssh_args = [get_ssh_bin(), "-i", key_path, f"{ssh_login_user}@{instance_ip}"]
+    ssh_cmd = " ".join(ssh_args)
+    print(ssh_cmd)
     wait_until_accepts_connection(ip=instance_ip, port=22)
     logging.info("Instance is up!")
 
@@ -518,15 +536,11 @@ def main():
         return
 
     # Launch Shell
-    logging.info("Launching shell...")
+    logging.info("Launching shell (running above ssh command)...")
     # Wait an extra seven seconds to give a chance for the userdata script to run, to try to silence the MOTD. This is
     # really inelegant and doesn't work reliably. I'm not sure how to handle this problem. The MOTD is completely
     # undesirable for the ec2instance usecases.
     # time.sleep(7)
-    ssh_login_user = guess_ami_default_username(args.ami_identifier)
-    ssh_args = [get_ssh_bin(), "-i", key_path, f"{ssh_login_user}@{instance_ip}"]
-    ssh_cmd = " ".join(ssh_args)
-    print(ssh_cmd)
     automatic_ssh_cmd = " ".join(ssh_args + ["-o", "StrictHostKeyChecking=no"])
     os.system(automatic_ssh_cmd)
 
