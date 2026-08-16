@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ec2instance-vast"
+version = "0.1"
+description = "Launch new vast.ai instances easily and quickly with one command"
+readme = "README.md"
+authors = [
+    { name = "John Miller", email = "john@johngm.com" },
+]
+requires-python = ">=3.11"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+    "vastai",
+    "rich",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff>=0.11.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/personalcomputer/ec2instance"
+
+[project.scripts]
+vastinstance = "vastinstance.main:main"
+
+[tool.hatch.build]
+only-include = [
+    "vastinstance",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# These match the established style of the sibling ec2instance/hetznerinstance
+# packages and the project's AGENTS.md conventions:
+#  - UP031: %-formatting is the established style in the sibling codebases
+#  - LOG015: root-logger basicConfig is used in main() by the siblings
+#  - UP017: AGENTS.md mandates `datetime.timezone.utc` (not `datetime.UTC`)
+#  - BLE001: graceful `except Exception` with sys.exit is permitted by AGENTS.md
+ignore = ["UP031", "LOG015", "UP017", "BLE001"]
+
+[tool.isort]
+line_length = 120
+default_section = "THIRDPARTY"
+order_by_type = true
+profile = "black"
+
+[tool.black]
+line-length = 120
+
+[tool.flake8]
+max-line-length = 120
+ignore = ["E501", "F403", "W503", "SIM106"]

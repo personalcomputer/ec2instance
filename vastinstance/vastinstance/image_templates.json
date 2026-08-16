@@ -1,0 +1,31 @@
+{
+  "nvidia-cuda": {
+    "description": "Nvidia CUDA base image with Jupyter, Tensorboard, and SSH",
+    "image": "vastai/base-image:@vastai-automatic-tag",
+    "env": "-p 1111:1111 -p 6006:6006 -p 8080:8080 -p 8384:8384 -p 10100:10100 -p 10200:10200 -p 72299:72299 -e OPEN_BUTTON_PORT=\"1111\" -e OPEN_BUTTON_TOKEN=\"1\" -e JUPYTER_DIR=\"/\" -e DATA_DIRECTORY=\"/workspace/\" -e PORTAL_CONFIG=\"localhost:1111:11111:/:Instance Portal|localhost:8080:18080:/:Jupyter|localhost:8080:8080:/terminals/1:Jupyter Terminal|localhost:8384:18384:/:Syncthing|localhost:6006:16006:/:Tensorboard\"",
+    "disk": 16,
+    "onstart_cmd": "entrypoint.sh",
+    "jupyter": true,
+    "ssh": true,
+    "direct": true
+  },
+  "linux-desktop-container": {
+    "description": "Linux desktop in a container with Selkies/Guacamole/VNC, Jupyter, and SSH",
+    "image": "vastai/linux-desktop:cuda-12.9-ubuntu24.04-2026-06-16",
+    "env": "-p 1111:1111 -p 6100:6100 -p 73478:73478 -p 8384:8384 -p 72299:72299 -p 6200:6200 -p 5900:5900 -p 10100:10100 -p 10200:10200 -e OPEN_BUTTON_TOKEN=\"1\" -e JUPYTER_DIR=\"/\" -e DATA_DIRECTORY=\"/workspace/\" -e PORTAL_CONFIG=\"localhost:1111:11111:/:Instance Portal|localhost:6100:16100:/:Selkies Low Latency Desktop|localhost:6200:16200:/guacamole:Apache Guacamole Desktop (VNC)|localhost:8080:8080:/:Jupyter|localhost:8080:8080:/terminals/1:Jupyter Terminal|localhost:8384:18384:/:Syncthing\" -e OPEN_BUTTON_PORT=\"1111\" -e SELKIES_ENCODER=\"x264enc\"",
+    "disk": 16,
+    "onstart_cmd": "entrypoint.sh",
+    "jupyter": true,
+    "ssh": true,
+    "direct": true
+  },
+  "ubuntu-desktop-vm": {
+    "description": "Ubuntu 22.04 desktop in a KVM VM with Selkies/Guacamole/VNC and SSH",
+    "image": "docker.io/vastai/kvm:ubuntu_desktop_22.04-2025-11-21",
+    "env": "-p 1111:1111 -p 3478:3478/udp -p 5900:5900 -p 6100:6100 -p 6200:6200 -p 741641:741641/udp -e OPEN_BUTTON_TOKEN=\"1\" -e OPEN_BUTTON_PORT=\"1111\" -e PORTAL_CONFIG=\"localhost:1111:11111:/:Instance Portal|localhost:6100:16100:/:Selkies Low Latency Desktop|localhost:6200:16200:/:Apache Guacamole Desktop (VNC)\"",
+    "disk": 75,
+    "jupyter": false,
+    "ssh": true,
+    "direct": true
+  }
+}
