@@ -1,7 +1,6 @@
 # ec2instance
 
-ec2instance is the "docker run -it" of AWS EC2. It is a single command that very quickly launches an EC2 instance from
-the CLI and takes care of the legwork to make it immediately usable for you.
+ec2instance is the "docker run -it" of cloud compute. It launches a temporary AWS EC2 instance, connects to it over SSH, and ties its lifecycle to the command by default.
 
 ## Demo
 
@@ -9,7 +8,7 @@ the CLI and takes care of the legwork to make it immediately usable for you.
 
 ## Install
 
-```
+```bash
 pip install ec2instance
 ```
 
@@ -62,3 +61,17 @@ help & support:
   consists of generating a dedicated fresh VPC and SSH keypair, and these are persisted between invocations of
   ec2instance. There is no AWS fee associated with these resources, and their auto-generated names are obvious and
   logged to console. Feel free to delete them if you stop using ec2instance.
+
+
+## Other Providers (other than AWS EC2)
+
+ec2instance actually supports Hetzner and Vast.AI too!
+
+Examples:
+
+```bash
+ec2instance hetzner --type cx23 --location fsn1
+ec2instance vast --type 123456789 --ami nvidia-cuda
+```
+
+Run `ec2instance hetzner --help` or `ec2instance vast --help` for the Hertzner or Vast.ai specific help, respectively.

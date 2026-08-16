@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ec2instance"
-version = "1.9"
-description = "Launch new EC2 instances easily and quickly with one command"
+version = "2.0.0"
+description = "Launch temporary AWS, Hetzner Cloud, and vast.ai instances with one command"
 readme = "README.md"
 authors = [
     { name = "John Miller", email = "john@johngm.com" },
 ]
-requires-python = ">=3.7.0"
+requires-python = ">=3.11"
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
@@ -18,9 +18,12 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-    'boto3',
-    'iso8601',
-    'cryptography',
+    "boto3",
+    "cryptography",
+    "hcloud",
+    "iso8601",
+    "rich",
+    "vastai",
 ]
 
 [dependency-groups]
@@ -43,11 +46,44 @@ dev = [
 Homepage = "https://github.com/personalcomputer/ec2instance"
 
 [project.scripts]
-ec2instance = "ec2instance.main:main"
+ec2instance = "ec2instance.cli:main"
+hetznerinstance = "hetznerinstance.main:main"
+vastinstance = "vastinstance.main:main"
 
-[tool.hatch.build]
-only-include = [
+[tool.hatch.build.targets.wheel]
+packages = [
     "ec2instance",
+    "hetznerinstance",
+    "vastinstance",
+]
+exclude = [
+    "**/.venv",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/__pycache__",
+    "**/dist",
+    "**/tests",
+    "**/pyproject.toml",
+    "**/uv.lock",
+    "**/README.md",
+    "hetznerinstance/cli.toml",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/ec2instance",
+    "/hetznerinstance",
+    "/vastinstance",
+    "/tests",
+    "/README.md",
+    "/pyproject.toml",
+]
+exclude = [
+    "**/.venv",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/__pycache__",
+    "**/dist",
 ]
 
 [tool.isort]
@@ -62,3 +98,7 @@ line-length = 120
 [tool.flake8]
 max-line-length = 120
 ignore = ["E501", "F403", "W503", "SIM106"]
+
+[tool.codespell]
+# Domain/config identifiers: "ded" means dedicated CPU; THIRDPARTY is an isort section name.
+ignore-words-list = "ded,thirdparty"

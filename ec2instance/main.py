@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
-import json
 import logging
 import os
 import re
 import shutil
 import signal
 import socket
+import subprocess
 import sys
-import time
 import unicodedata
 
 import boto3
@@ -17,38 +16,27 @@ import botocore.exceptions
 from cryptography.hazmat.primitives import serialization
 from iso8601 import parse_date as parse_iso8601
 
+from ec2instance.core import (
+    build_instance_result,
+    dump_json_with_datetimes,
+    list_and_validate_scripts,
+    load_user_data,
+    path_collapseuser,
+    resolve_provisioning_script,
+    run_provisioning_script,
+    wait_until_accepts_connection,
+)
+
 PROGRAM_NAME = "ec2instance_cmd"
 HOSTNAME = socket.gethostname()
 USERNAME = os.environ.get("USER", "")
 XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
 CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, PROGRAM_NAME)
 
-DEFAULT_USER_DATA = """#!/bin/bash
-date
-
-# Disable MOTD
-for userdir in /home/*; do touch $userdir/.hushlogin; done
-
-# Pull latest package repository metadata
-if grep -qi "Ubuntu" /etc/issue; then
-    apt update -y
-fi
-"""
 USER_DATA_SCRIPTS_LIBRARY_PATH = os.path.join(CONFIG_DIR, "user_data_scripts")
 DEFAULT_USER_DATA_PATH = os.path.join(USER_DATA_SCRIPTS_LIBRARY_PATH, "default.sh")
 DEFAULT_INSTANCE_TYPE = "t3a.micro"
 DEFAULT_AMI = "ubuntu"
-
-
-def dump_json_with_datetimes(obj, **kwargs):
-    return json.dumps(obj, default=_json_object_serializer, **kwargs)
-
-
-def _json_object_serializer(obj):
-    if hasattr(obj, "isoformat"):
-        assert obj.tzinfo is not None
-        return obj.astimezone(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    return json.JSONEncoder.default(obj)
 
 
 def slugify(value):
@@ -295,9 +283,20 @@ def get_keypair(ec2_client):
     return keypair_name, key_path
 
 
-def launch_instance(ec2_client, ami, subnet_id, security_group_id, instance_type, keypair_name, user_data, volume_size, spot):
+def launch_instance(
+    ec2_client,
+    ami,
+    subnet_id,
+    security_group_id,
+    instance_type,
+    keypair_name,
+    user_data,
+    volume_size,
+    spot=False,
+):
     # Prepare RunInstances configuration
-    ec2_instance_name = f"{PROGRAM_NAME} {HOSTNAME} {USERNAME} {datetime.datetime.utcnow().isoformat()}"
+    launched_at = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    ec2_instance_name = f"{PROGRAM_NAME} {HOSTNAME} {USERNAME} {launched_at}"
     run_instances_kwargs = {
         "ImageId": ami,
         "SubnetId": subnet_id,
@@ -326,20 +325,6 @@ def launch_instance(ec2_client, ami, subnet_id, security_group_id, instance_type
     return ec2_client.describe_instances(InstanceIds=[instance_id])["Reservations"][0]["Instances"][0]
 
 
-def wait_until_accepts_connection(ip, port):
-    POLLING_INTERVAL_S = 1.5
-    while True:
-        try:
-            s = socket.create_connection((ip, port), timeout=POLLING_INTERVAL_S)
-        except (ConnectionRefusedError, ConnectionResetError):
-            time.sleep(POLLING_INTERVAL_S)
-        except socket.timeout:
-            pass
-        else:
-            s.close()
-            return
-
-
 def terminate_instance(ec2_client, instance_id):
     ec2_client.terminate_instances(
         InstanceIds=[
@@ -365,12 +350,7 @@ def handle_interrupted_launch():
     quit = True
 
 
-def path_collapseuser(path):
-    """The inverse of os.path.expanduser"""
-    return path.replace(os.path.expanduser("~"), "~", 1)
-
-
-def main():
+def main(*, unified_output=False):
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s - %(message)s")
     logging.getLogger("botocore").setLevel(logging.WARNING)
     arg_parser = argparse.ArgumentParser(
@@ -405,6 +385,12 @@ def main():
         help='EC2 "user data" script. Path to a shell script. AWS will upload and run this script '
         f"on the instance immediately after launch. "
         f"(default: {path_collapseuser(DEFAULT_USER_DATA_PATH)})",
+    )
+    arg_parser.add_argument(
+        "--provisioning-script",
+        "--prov",
+        help="Local provisioning script name from ~/.config/ec2instance_cmd/provision_scripts/. "
+        "Runs after SSH becomes available.",
     )
     arg_parser.add_argument(
         "--volume-size",
@@ -442,27 +428,34 @@ def main():
         action="store_true",
         help="Print out the path where ec2instance is storing local data and configuration.",
     )
+    subparsers = arg_parser.add_subparsers(dest="command")
+    subparsers.add_parser(
+        "list-scripts",
+        help="List and validate shared provisioning and user-data scripts.",
+    )
     args = arg_parser.parse_args()
 
     if args.show_data_path:
         print(CONFIG_DIR)
         sys.exit(0)
 
-    # Load user data
-    if not os.path.exists(DEFAULT_USER_DATA_PATH):
-        os.makedirs(os.path.dirname(DEFAULT_USER_DATA_PATH), exist_ok=True)
-        with open(DEFAULT_USER_DATA_PATH, "w") as f:
-            f.write(DEFAULT_USER_DATA)
-    user_data_rel_path = args.user_data_filename
-    user_data_lib_path = os.path.join(USER_DATA_SCRIPTS_LIBRARY_PATH, args.user_data_filename)
-    if os.path.exists(user_data_rel_path):
-        user_data_path = user_data_rel_path
-    elif os.path.exists(user_data_lib_path):
-        user_data_path = user_data_lib_path
-    else:
-        raise ValueError(f"Cannot open {args.user_data_filename}")
-    with open(user_data_path) as f:
-        user_data = f.read()
+    if args.command == "list-scripts":
+        if not list_and_validate_scripts():
+            sys.exit(1)
+        return
+
+    provisioning_script = None
+    if args.provisioning_script:
+        try:
+            provisioning_script = resolve_provisioning_script(args.provisioning_script)
+        except ValueError as error:
+            arg_parser.error(str(error))
+
+    user_data = load_user_data(
+        args.user_data_filename,
+        DEFAULT_USER_DATA_PATH,
+        USER_DATA_SCRIPTS_LIBRARY_PATH,
+    )
 
     # AWS client init
     try:
@@ -527,12 +520,39 @@ def main():
     ssh_login_user = guess_ami_default_username(args.ami_identifier)
     ssh_args = [get_ssh_bin(), "-i", key_path, f"{ssh_login_user}@{instance_ip}"]
     ssh_cmd = " ".join(ssh_args)
-    print(ssh_cmd)
+    print(ssh_cmd, flush=True)
     wait_until_accepts_connection(ip=instance_ip, port=22)
     logging.info("Instance is up!")
 
+    if provisioning_script:
+        try:
+            run_provisioning_script(
+                provisioning_script,
+                ssh_keyfile=key_path,
+                port=22,
+                target=f"{ssh_login_user}@{instance_ip}",
+            )
+        except (subprocess.CalledProcessError, RuntimeError) as error:
+            logging.error("Provisioning script failed: %s", error)
+            terminate(ec2_client, instance_id)
+            return
+
     if args.detach:
-        print(dump_json_with_datetimes(instance, indent=2))
+        output = instance
+        if unified_output:
+            output = build_instance_result(
+                provider="aws",
+                resource_id=instance_id,
+                status=(instance.get("State") or {}).get("Name"),
+                host=instance_ip,
+                port=22,
+                user=ssh_login_user,
+                instance_type=instance.get("InstanceType"),
+                image=instance.get("ImageId"),
+                location=(instance.get("Placement") or {}).get("AvailabilityZone"),
+                raw=instance,
+            )
+        print(dump_json_with_datetimes(output, indent=2))
         return
 
     # Launch Shell

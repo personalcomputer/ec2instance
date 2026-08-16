@@ -1,5 +1,0 @@
-active_context = "default"
-
-[[contexts]]
-  name = "default"
-  token = "EXAMPLE-TOKEN"

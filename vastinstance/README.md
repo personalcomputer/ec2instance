@@ -1,6 +1,6 @@
-# ec2instance-vast
+# ec2instance vast
 
-Launch new vast.ai instances easily and quickly with one command. Inspired by [ec2instance](https://github.com/personalcomputer/ec2instance).
+Launch new vast.ai instances easily and quickly with one command.
 
 ## Quick Start
 

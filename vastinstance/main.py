@@ -1,29 +1,41 @@
 #!/usr/bin/env python3
 import argparse
-import datetime
 import json
 import logging
 import os
 import signal
 import socket
+import subprocess
 import sys
 import time
 import unicodedata
 
 from vastai import VastAI
 
+from ec2instance.core import (
+    PROGRAM_CONFIG_DIR,
+    build_instance_result,
+    dump_json_with_datetimes,
+    list_and_validate_scripts,
+)
+from ec2instance.core import path_collapseuser as path_collapseuser
+from ec2instance.core import (
+    resolve_provisioning_script,
+    run_provisioning_script,
+    wait_until_accepts_connection,
+)
 from vastinstance import offers
 
 PROGRAM_NAME = "vastinstance"
 HOSTNAME = socket.gethostname()
 USERNAME = os.environ.get("USER", "")
 XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, PROGRAM_NAME)
+CONFIG_DIR = str(PROGRAM_CONFIG_DIR)
 
 IMAGE_TEMPLATES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "image_templates.json")
 
 DEFAULT_AMI = "nvidia-cuda"
-DEFAULT_SSH_KEY_PATH = os.path.expanduser("~/.ssh/id_ed25519")
+DEFAULT_SSH_KEY_PATH = "~/.ssh/id_ed25519"
 
 _TEMPLATES = None
 
@@ -36,25 +48,10 @@ def _load_templates() -> dict:
     return _TEMPLATES
 
 
-def dump_json_with_datetimes(obj, **kwargs):
-    return json.dumps(obj, default=_json_object_serializer, **kwargs)
-
-
-def _json_object_serializer(obj):
-    if hasattr(obj, "isoformat"):
-        assert obj.tzinfo is not None
-        return obj.astimezone(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    return json.JSONEncoder.default(obj)
-
-
 def slugify(value):
     value = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
     value = value.strip().lower()
     return value
-
-
-def path_collapseuser(path):
-    return path.replace(os.path.expanduser("~"), "~", 1)
 
 
 def get_ssh_bin():
@@ -126,20 +123,18 @@ def compute_runtype(jupyter, ssh, direct):
 def resolve_template(name):
     templates = _load_templates()
     if name not in templates:
-        raise ValueError(
-            "Unknown image template '%s'. Available: %s"
-            % (name, ", ".join(sorted(templates.keys())))
-        )
+        raise ValueError("Unknown image template '%s'. Available: %s" % (name, ", ".join(sorted(templates.keys()))))
     return templates[name]
 
 
 def get_ssh_key_path():
-    candidates = [
+    candidate_names = [
         DEFAULT_SSH_KEY_PATH,
-        os.path.expanduser("~/.ssh/id_rsa"),
-        os.path.expanduser("~/.ssh/id_ecdsa"),
-        os.path.expanduser("~/.ssh/id_ed25519_sk"),
+        "~/.ssh/id_rsa",
+        "~/.ssh/id_ecdsa",
+        "~/.ssh/id_ed25519_sk",
     ]
+    candidates = [os.path.expanduser(name) for name in candidate_names]
     for p in candidates:
         if os.path.exists(p):
             return p
@@ -163,22 +158,6 @@ def launch_instance(vast, offer_id, template):
     if template.get("onstart_cmd"):
         kwargs["onstart_cmd"] = template["onstart_cmd"]
     return vast.create_instance(**kwargs)
-
-
-def wait_until_accepts_connection(ip, port):
-    POLLING_INTERVAL_S = 1.5
-    while True:
-        try:
-            s = socket.create_connection((ip, port), timeout=POLLING_INTERVAL_S)
-        except (ConnectionRefusedError, ConnectionResetError):
-            time.sleep(POLLING_INTERVAL_S)
-        except TimeoutError:
-            pass
-        except socket.gaierror:
-            time.sleep(POLLING_INTERVAL_S)
-        else:
-            s.close()
-            return
 
 
 def instance_to_dict(inst):
@@ -262,7 +241,7 @@ def list_templates():
     print()
 
 
-def main():
+def main(*, unified_output=False):
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s - %(message)s")
 
     templates = _load_templates()
@@ -300,6 +279,12 @@ def main():
         help="Override the template's disk size (GiB). (default: per template)",
     )
     arg_parser.add_argument(
+        "--provisioning-script",
+        "--prov",
+        help="Local provisioning script name from ~/.config/ec2instance_cmd/provision_scripts/. "
+        "Runs after SSH becomes available.",
+    )
+    arg_parser.add_argument(
         "--api-key",
         type=str,
         default=None,
@@ -326,7 +311,7 @@ def main():
     arg_parser.add_argument(
         "--show-data-path",
         action="store_true",
-        help="Print out the path where vastinstance is storing local data and configuration.",
+        help="Print out the shared ec2instance local data and configuration path.",
     )
 
     # `list-types` subcommand: list the top N cheapest available vast.ai offers.
@@ -336,33 +321,61 @@ def main():
         help="List the top N cheapest available vast.ai offers (on-demand + interruptible).",
         description="List the top N cheapest available vast.ai offers (on-demand + interruptible). "
         "Effective price = rent + bandwidth (assumed UL/DL traffic), computed client-side.",
+        epilog=(
+            "query examples:\n"
+            '  --query "rentable=true num_gpus=1 gpu_name=RTX_4090"\n'
+            '  --query "rentable=true vms_enabled=false"\n'
+            '  --query "rentable=true reliability>=0.99 inet_down>=500"'
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     lt.add_argument("-n", type=int, default=100, help="number of cheapest instances to show (default: 100)")
     lt.add_argument("--query", type=str, default="rentable=true", help="vastai query string (default: rentable=true)")
     lt.add_argument(
-        "--limit", type=int, default=2000,
+        "--limit",
+        type=int,
+        default=2000,
         help="offers to fetch per type (eff-price sort is client-side, so pool should exceed n) (default: 2000)",
     )
-    lt.add_argument("--up-gb-hr", type=float, default=8.0, help="assumed upload traffic in GB/hr for effective price (default: 8.0)")
-    lt.add_argument("--down-gb-hr", type=float, default=4.0, help="assumed download traffic in GB/hr for effective price (default: 4.0)")
-    lt.add_argument("--disk-gb", type=float, default=16.0, help="assumed disk storage in GiB for effective price (default: 16.0)")
+    lt.add_argument(
+        "--up-gb-hr", type=float, default=8.0, help="assumed upload traffic in GB/hr for effective price (default: 8.0)"
+    )
+    lt.add_argument(
+        "--down-gb-hr",
+        type=float,
+        default=4.0,
+        help="assumed download traffic in GB/hr for effective price (default: 4.0)",
+    )
+    lt.add_argument(
+        "--disk-gb", type=float, default=16.0, help="assumed disk storage in GiB for effective price (default: 16.0)"
+    )
     lt.add_argument("--vm-only", action="store_true", help="only VM-capable offers (vms_enabled=true)")
-    lt.add_argument("--container-only", action="store_true", help="only container offers (vms_enabled=false)")
     lt.add_argument("--eur", action="store_true", help="only offers in Europe (EU-27 + UK, Norway, Switzerland)")
     lt.add_argument("--sec-only", action="store_true", help="only secure datacenter offers (datacenter=true)")
     lt.add_argument(
-        "--no-min-spec", action="store_true",
+        "--no-min-spec",
+        action="store_true",
         help="disable the default min-spec filter (compute_cap>=700, inet_up>=100, inet_down>=100 Mb/s, "
         "cpu_ram>=12 GB, cpu_cores_effective>=4)",
     )
-    lt.add_argument("--latency", action="store_true", help="probe each host IP for RTT via ICMP ping (adds ~1-2s per unique IP; needs CAP_NET_RAW)")
-    lt.add_argument("--on-demand-only", action="store_true", dest="od_only", help="only on-demand pricing")
-    lt.add_argument("--interruptible-only", action="store_true", dest="int_only", help="only interruptible (bid) pricing")
     lt.add_argument(
-        "--api-key", type=str, default=None, dest="api_key",
+        "--latency",
+        action="store_true",
+        help="probe each host IP for RTT via ICMP ping (adds ~1-2s per unique IP; needs CAP_NET_RAW)",
+    )
+    lt.add_argument("--od-only", action="store_true", help="only on-demand pricing")
+    lt.add_argument("-int-only", action="store_true", dest="int_only", help="only interruptible (bid) pricing")
+    lt.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        dest="api_key",
         help="vast.ai API key. Alternatively, set VAST_API_KEY env var, or save it to "
         "~/.config/vastai/vast_api_key (the file the vastai CLI uses).",
+    )
+    subparsers.add_parser(
+        "list-scripts",
+        help="List and validate shared provisioning and user-data scripts.",
     )
 
     args = arg_parser.parse_args()
@@ -375,6 +388,11 @@ def main():
         list_templates()
         sys.exit(0)
 
+    if args.command == "list-scripts":
+        if not list_and_validate_scripts():
+            sys.exit(1)
+        return
+
     if args.command == "list-types":
         vast = VastAI(api_key=args.api_key)
         offers.list_types(vast, args)
@@ -382,6 +400,13 @@ def main():
 
     if args.offer_id is None:
         arg_parser.error("the following arguments are required: -t/--type")
+
+    provisioning_script = None
+    if args.provisioning_script:
+        try:
+            provisioning_script = resolve_provisioning_script(args.provisioning_script)
+        except ValueError as error:
+            arg_parser.error(str(error))
 
     # Resolve template
     template = resolve_template(args.template)
@@ -471,17 +496,44 @@ def main():
             return
         time.sleep(POLL_INTERVAL)
 
-    logging.info("Instance is up! (id: %s, %s:%s)" % (instance_id, ssh_host, ssh_port))
-
     ssh_login_user = "root"
     ssh_args = [get_ssh_bin(), "-i", ssh_key_path, "-p", str(ssh_port), "%s@%s" % (ssh_login_user, ssh_host)]
     ssh_cmd = " ".join(ssh_args)
-    print(ssh_cmd)
+    print(ssh_cmd, flush=True)
 
     wait_until_accepts_connection(ip=ssh_host, port=int(ssh_port))
+    logging.info("Instance is up! (id: %s, %s:%s)" % (instance_id, ssh_host, ssh_port))
+
+    if provisioning_script:
+        try:
+            run_provisioning_script(
+                provisioning_script,
+                ssh_keyfile=ssh_key_path,
+                port=int(ssh_port),
+                target="%s@%s" % (ssh_login_user, ssh_host),
+            )
+        except (subprocess.CalledProcessError, RuntimeError) as error:
+            logging.error("Provisioning script failed: %s", error)
+            terminate(vast, instance_id)
+            return
 
     if args.detach:
-        print(dump_json_with_datetimes(instance_to_dict(inst), indent=2))
+        instance_data = instance_to_dict(inst)
+        output = instance_data
+        if unified_output:
+            output = build_instance_result(
+                provider="vast",
+                resource_id=instance_id,
+                status=inst.get("actual_status"),
+                host=ssh_host,
+                port=int(ssh_port),
+                user=ssh_login_user,
+                instance_type=str(args.offer_id),
+                image=args.template,
+                location=inst.get("geolocation"),
+                raw=instance_data,
+            )
+        print(dump_json_with_datetimes(output, indent=2))
         return
 
     # Launch Shell
@@ -490,9 +542,7 @@ def main():
     os.system(automatic_ssh_cmd)
 
     # After shell exits, wait for SIGTERM/SIGINT
-    logging.info(
-        "Instance is still running. Press CTRL+C to destroy, or the command to SSH again is: %s" % ssh_cmd
-    )
+    logging.info("Instance is still running. Press CTRL+C to destroy, or the command to SSH again is: %s" % ssh_cmd)
     while True:
         signal.pause()
 

@@ -7,10 +7,10 @@ import re
 import shutil
 import signal
 import socket
+import subprocess
 import sys
-import time
-import unicodedata
 import tomllib
+import unicodedata
 
 from cryptography.hazmat.primitives import serialization
 from hcloud import Client
@@ -18,29 +18,29 @@ from hcloud.firewalls import Firewall, FirewallRule
 from hcloud.images import Image
 from hcloud.locations import Location
 from hcloud.server_types import ServerType
+from hcloud.servers import BoundServer, ServerCreatePublicNetwork
 from hcloud.ssh_keys import SSHKey
-from hcloud.servers import ServerCreatePublicNetwork
+
+from ec2instance.core import (
+    PROGRAM_CACHE_DIR,
+    PROGRAM_CONFIG_DIR,
+    build_instance_result,
+    dump_json_with_datetimes,
+    list_and_validate_scripts,
+    load_user_data,
+    path_collapseuser,
+    resolve_provisioning_script,
+    run_provisioning_script,
+    wait_until_accepts_connection,
+)
 
 PROGRAM_NAME = "hetznerinstance"
 HOSTNAME = socket.gethostname()
 USERNAME = os.environ.get("USER", "")
 XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
-CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, PROGRAM_NAME)
-CACHE_DIR = os.path.join(
-    os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), PROGRAM_NAME
-)
+CONFIG_DIR = str(PROGRAM_CONFIG_DIR)
+CACHE_DIR = str(PROGRAM_CACHE_DIR)
 
-DEFAULT_USER_DATA = """#!/bin/bash
-date
-
-# Disable MOTD
-for userdir in /home/*; do touch $userdir/.hushlogin; done
-
-# Pull latest package repository metadata
-if grep -qi "Ubuntu" /etc/issue; then
-    apt update -y
-fi
-"""
 USER_DATA_SCRIPTS_LIBRARY_PATH = os.path.join(CONFIG_DIR, "user_data_scripts")
 DEFAULT_USER_DATA_PATH = os.path.join(USER_DATA_SCRIPTS_LIBRARY_PATH, "default.sh")
 DEFAULT_SERVER_TYPE = "cx23"
@@ -49,9 +49,7 @@ DEFAULT_LOCATION = "fsn1"
 
 PRIMARY_IPV4_MONTHLY_EUR = 0.50
 
-HCLOUD_CONFIG_DIR = os.environ.get(
-    "HCLOUD_CONFIG_DIR", os.path.join(XDG_CONFIG_HOME, "hcloud")
-)
+HCLOUD_CONFIG_DIR = os.environ.get("HCLOUD_CONFIG_DIR", os.path.join(XDG_CONFIG_HOME, "hcloud"))
 HCLOUD_CONFIG_PATH = os.path.join(HCLOUD_CONFIG_DIR, "cli.toml")
 
 # Hardcoded location metadata. Key = Hetzner Cloud location code.
@@ -64,9 +62,7 @@ LOCATIONS = {
     "sin": {"city": "Singapore", "country": "Singapore", "region": "Asia-Pacific"},
 }
 
-PRICING_JSON_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "pricing.json"
-)
+PRICING_JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pricing.json")
 
 _PRICING_DATA = None
 
@@ -98,27 +94,8 @@ CATEGORY_LABELS = {
 }
 
 
-def dump_json_with_datetimes(obj, **kwargs):
-    return json.dumps(obj, default=_json_object_serializer, **kwargs)
-
-
-def _json_object_serializer(obj):
-    if hasattr(obj, "isoformat"):
-        assert obj.tzinfo is not None
-        return (
-            obj.astimezone(datetime.timezone.utc)
-            .isoformat(timespec="milliseconds")
-            .replace("+00:00", "Z")
-        )
-    return json.JSONEncoder.default(obj)
-
-
 def slugify(value):
-    value = (
-        unicodedata.normalize("NFKD", str(value))
-        .encode("ascii", "ignore")
-        .decode("ascii")
-    )
+    value = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
     value = re.sub(r"[^\w\s-]", "", value).strip().lower()
     return re.sub(r"[-\s]+", "-", value)
 
@@ -154,16 +131,9 @@ def load_token_from_hcloud_config(context_name: str | None = None) -> str | None
 def list_server_types(location_filter: str | None = None):
     server_types = load_server_types()
     print()
-    print(
-        "  Pricing data as of %s (not live, may be outdated). Update with: update_pricing.py"
-        % load_pricing_date()
-    )
+    print("  Pricing data as of %s (not live, may be outdated). Update with: update_pricing.py" % load_pricing_date())
     for cat in CATEGORY_ORDER:
-        types_in_cat = [
-            (name, info)
-            for name, info in server_types.items()
-            if info["category"] == cat
-        ]
+        types_in_cat = [(name, info) for name, info in server_types.items() if info["category"] == cat]
         if not types_in_cat:
             continue
         print()
@@ -172,9 +142,7 @@ def list_server_types(location_filter: str | None = None):
         for name, info in sorted(
             types_in_cat,
             key=lambda x: (
-                x[1]["locations"]
-                .get(location_filter or "fsn1", x[1]["locations"].get("fsn1", {}))
-                .get("monthly", 9999)
+                x[1]["locations"].get(location_filter or "fsn1", x[1]["locations"].get("fsn1", {})).get("monthly", 9999)
             ),
         ):
             locs = info["locations"]
@@ -182,17 +150,12 @@ def list_server_types(location_filter: str | None = None):
                 if location_filter not in locs:
                     continue
                 price = locs[location_filter]
-                print(
-                    "  %-8s  %-42s  €%7.2f/mo  (€%.4f/hr)"
-                    % (name, info["desc"], price["monthly"], price["hourly"])
-                )
+                print("  %-8s  %-42s  €%7.2f/mo  (€%.4f/hr)" % (name, info["desc"], price["monthly"], price["hourly"]))
             else:
                 eu_locs = [loc for loc in locs if loc in ("fsn1", "nbg1", "hel1")]
                 us_locs = [loc for loc in locs if loc in ("ash", "hil")]
                 ap_locs = [loc for loc in locs if loc in ("sin",)]
-                price = locs.get(
-                    "fsn1", locs.get("nbg1", locs.get("hel1", list(locs.values())[0]))
-                )
+                price = locs.get("fsn1", locs.get("nbg1", locs.get("hel1", list(locs.values())[0])))
                 avail = ", ".join(eu_locs + us_locs + ap_locs) or "check availability"
                 print(
                     "  %-8s  %-42s  €%7.2f/mo  (€%.4f/hr)  [%s]"
@@ -206,10 +169,7 @@ def list_locations():
     print("  %-6s  %-18s  %-14s  %-14s" % ("Code", "City", "Country", "Region"))
     print("  %-6s  %-18s  %-14s  %-14s" % ("-----", "----", "-------", "------"))
     for code, info in LOCATIONS.items():
-        print(
-            "  %-6s  %-18s  %-14s  %-14s"
-            % (code, info["city"], info["country"], info["region"])
-        )
+        print("  %-6s  %-18s  %-14s  %-14s" % (code, info["city"], info["country"], info["region"]))
     print()
 
 
@@ -225,9 +185,7 @@ def _load_cached_latest_ubuntu(client: Client, arch: str) -> Image | None:
         with open(cache_path) as f:
             cached = json.load(f)
         cached_at = datetime.datetime.fromisoformat(cached["cached_at"])
-        age_s = (
-            datetime.datetime.now(tz=datetime.timezone.utc) - cached_at
-        ).total_seconds()
+        age_s = (datetime.datetime.now(tz=datetime.timezone.utc) - cached_at).total_seconds()
         if age_s > 604800:  # 1 week TTL
             return None
         image_id = int(cached["image_id"])
@@ -253,9 +211,7 @@ def get_image(client: Client, image_identifier: str, arch: str) -> Image:
         cached_image = _load_cached_latest_ubuntu(client, arch)
         if cached_image is not None:
             return cached_image
-        images = client.images.get_list(
-            name=None, architecture=[arch], type=["system"], sort=["created:desc"]
-        )
+        images = client.images.get_list(name=None, architecture=[arch], type=["system"], sort=["created:desc"])
         all_images = images.images
         ubuntu_images = [i for i in all_images if i.name and "ubuntu" in i.name]
         if ubuntu_images:
@@ -264,18 +220,14 @@ def get_image(client: Client, image_identifier: str, arch: str) -> Image:
             return image
         raise ValueError("No Ubuntu system image found for architecture '%s'" % arch)
     elif image_identifier == "debian":
-        images = client.images.get_list(
-            name=None, architecture=[arch], type=["system"], sort=["created:desc"]
-        )
+        images = client.images.get_list(name=None, architecture=[arch], type=["system"], sort=["created:desc"])
         all_images = images.images
         debian_images = [i for i in all_images if i.name and "debian" in i.name]
         if debian_images:
             return debian_images[0]
         raise ValueError("No Debian system image found for architecture '%s'" % arch)
     elif image_identifier == "fedora":
-        images = client.images.get_list(
-            name=None, architecture=[arch], type=["system"], sort=["created:desc"]
-        )
+        images = client.images.get_list(name=None, architecture=[arch], type=["system"], sort=["created:desc"])
         all_images = images.images
         fedora_images = [i for i in all_images if i.name and "fedora" in i.name]
         if fedora_images:
@@ -294,17 +246,11 @@ def get_image(client: Client, image_identifier: str, arch: str) -> Image:
 
 
 def guess_image_default_username(image_identifier: str) -> str:
-    if image_identifier == "ubuntu" or (
-        isinstance(image_identifier, str) and "ubuntu" in image_identifier
-    ):
+    if image_identifier == "ubuntu" or (isinstance(image_identifier, str) and "ubuntu" in image_identifier):
         return "root"
-    elif image_identifier == "debian" or (
-        isinstance(image_identifier, str) and "debian" in image_identifier
-    ):
+    elif image_identifier == "debian" or (isinstance(image_identifier, str) and "debian" in image_identifier):
         return "root"
-    elif image_identifier == "fedora" or (
-        isinstance(image_identifier, str) and "fedora" in image_identifier
-    ):
+    elif image_identifier == "fedora" or (isinstance(image_identifier, str) and "fedora" in image_identifier):
         return "root"
     return "root"
 
@@ -425,7 +371,7 @@ def launch_server(
     user_data: str,
     server_name: str,
     public_net: ServerCreatePublicNetwork | None = None,
-) -> dict:
+) -> BoundServer:
     kwargs: dict = dict(
         name=server_name,
         server_type=server_type,
@@ -440,22 +386,11 @@ def launch_server(
         kwargs["public_net"] = public_net
     resp = client.servers.create(**kwargs)
     resp.action.wait_until_finished()
-    server = client.servers.get_by_id(resp.server.id)
+    server_id = resp.server.id
+    if server_id is None:
+        raise RuntimeError("Hetzner server creation returned no server ID")
+    server = client.servers.get_by_id(server_id)
     return server
-
-
-def wait_until_accepts_connection(ip: str, port: int):
-    POLLING_INTERVAL_S = 1.5
-    while True:
-        try:
-            s = socket.create_connection((ip, port), timeout=POLLING_INTERVAL_S)
-        except (ConnectionRefusedError, ConnectionResetError):
-            time.sleep(POLLING_INTERVAL_S)
-        except socket.timeout:
-            pass
-        else:
-            s.close()
-            return
 
 
 def delete_server(client: Client, server_id: int):
@@ -473,15 +408,9 @@ quit = False
 
 
 def handle_interrupted_launch():
-    logging.info(
-        "Will terminate server immediately after launch. Please wait a few more seconds..."
-    )
+    logging.info("Will terminate server immediately after launch. Please wait a few more seconds...")
     global quit
     quit = True
-
-
-def path_collapseuser(path: str) -> str:
-    return path.replace(os.path.expanduser("~"), "~", 1)
 
 
 def server_to_dict(server) -> dict:
@@ -529,10 +458,8 @@ def build_locations_help() -> str:
     return ", ".join(parts)
 
 
-def main():
-    logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s] %(levelname)s - %(message)s"
-    )
+def main(*, unified_output=False):
+    logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s - %(message)s")
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     import argparse
@@ -568,8 +495,7 @@ def main():
         type=str,
         default=DEFAULT_LOCATION,
         dest="location",
-        help="Hetzner Cloud location: %s (default: %s)"
-        % (build_locations_help(), DEFAULT_LOCATION),
+        help="Hetzner Cloud location: %s (default: %s)" % (build_locations_help(), DEFAULT_LOCATION),
     )
     arg_parser.add_argument(
         "-f",
@@ -580,6 +506,12 @@ def main():
         help='Cloud-init "user data" script. Path to a shell script. Hetzner Cloud will run this '
         "script on the server immediately after launch. "
         "(default: %s)" % path_collapseuser(DEFAULT_USER_DATA_PATH),
+    )
+    arg_parser.add_argument(
+        "--provisioning-script",
+        "--prov",
+        help="Local provisioning script name from ~/.config/ec2instance_cmd/provision_scripts/. "
+        "Runs after SSH becomes available.",
     )
     arg_parser.add_argument(
         "--token",
@@ -619,7 +551,7 @@ def main():
     arg_parser.add_argument(
         "--show-data-path",
         action="store_true",
-        help="Print out the path where hetznerinstance is storing local data and configuration.",
+        help="Print out the shared ec2instance local data and configuration path.",
     )
 
     # `list-types` subcommand: list all server types with pricing, optionally
@@ -639,6 +571,10 @@ def main():
         metavar="LOCATION",
         help="Optional location to filter by (e.g. ash, fsn1). Omit to list all.",
     )
+    subparsers.add_parser(
+        "list-scripts",
+        help="List and validate shared provisioning and user-data scripts.",
+    )
 
     args = arg_parser.parse_args()
 
@@ -650,43 +586,38 @@ def main():
         list_locations()
         sys.exit(0)
 
+    if args.command == "list-scripts":
+        if not list_and_validate_scripts():
+            sys.exit(1)
+        return
+
     if args.command == "list-types":
         loc_filter = args.location
         if loc_filter and loc_filter not in LOCATIONS:
             print(
-                "Unknown location '%s'. Available: %s"
-                % (loc_filter, ", ".join(LOCATIONS.keys())),
+                "Unknown location '%s'. Available: %s" % (loc_filter, ", ".join(LOCATIONS.keys())),
                 file=sys.stderr,
             )
             sys.exit(1)
         list_server_types(loc_filter)
         sys.exit(0)
 
-    # Load user data
-    if not os.path.exists(DEFAULT_USER_DATA_PATH):
-        os.makedirs(os.path.dirname(DEFAULT_USER_DATA_PATH), exist_ok=True)
-        with open(DEFAULT_USER_DATA_PATH, "w") as f:
-            f.write(DEFAULT_USER_DATA)
-    user_data_rel_path = args.user_data_filename
-    user_data_lib_path = os.path.join(
-        USER_DATA_SCRIPTS_LIBRARY_PATH, args.user_data_filename
+    provisioning_script = None
+    if args.provisioning_script:
+        try:
+            provisioning_script = resolve_provisioning_script(args.provisioning_script)
+        except ValueError as error:
+            arg_parser.error(str(error))
+
+    user_data = load_user_data(
+        args.user_data_filename,
+        DEFAULT_USER_DATA_PATH,
+        USER_DATA_SCRIPTS_LIBRARY_PATH,
     )
-    if os.path.exists(user_data_rel_path):
-        user_data_path = user_data_rel_path
-    elif os.path.exists(user_data_lib_path):
-        user_data_path = user_data_lib_path
-    else:
-        raise ValueError("Cannot open %s" % args.user_data_filename)
-    with open(user_data_path) as f:
-        user_data = f.read()
 
     # Hetzner Cloud client init
     # Token resolution: --token > HCLOUD_TOKEN/HETZNER_TOKEN env > hcloud cli.toml
-    api_token = (
-        args.api_token
-        or os.environ.get("HCLOUD_TOKEN")
-        or os.environ.get("HETZNER_TOKEN")
-    )
+    api_token = args.api_token or os.environ.get("HCLOUD_TOKEN") or os.environ.get("HETZNER_TOKEN")
     if not api_token:
         api_token = load_token_from_hcloud_config(context_name=args.context)
     if not api_token:
@@ -721,18 +652,14 @@ def main():
     server_type = client.server_types.get_by_name(args.server_type)
     if server_type is None:
         logging.error(
-            "Server type '%s' not found! Use the `list-types` subcommand to see available types."
-            % args.server_type
+            "Server type '%s' not found! Use the `list-types` subcommand to see available types." % args.server_type
         )
         sys.exit(1)
 
     # Resolve location
     location = client.locations.get_by_name(args.location)
     if location is None:
-        logging.error(
-            "Location '%s' not found! Available: %s"
-            % (args.location, ", ".join(LOCATIONS.keys()))
-        )
+        logging.error("Location '%s' not found! Available: %s" % (args.location, ", ".join(LOCATIONS.keys())))
         sys.exit(1)
 
     # Show pricing estimate at launch
@@ -741,11 +668,7 @@ def main():
         st_info = server_types[args.server_type]
         if args.location in st_info["locations"]:
             price = st_info["locations"][args.location]
-            ipv4_note = (
-                " + €%.2f/mo IPv4" % PRIMARY_IPV4_MONTHLY_EUR
-                if not args.ipv6_only
-                else ""
-            )
+            ipv4_note = " + €%.2f/mo IPv4" % PRIMARY_IPV4_MONTHLY_EUR if not args.ipv6_only else ""
             logging.info(
                 "Server type %s (%s) at %s: €%.2f/mo (€%.4f/hr)%s"
                 % (
@@ -828,22 +751,48 @@ def main():
 
     ip_label = "IPv6" if is_ipv6 else "IPv4"
     logging.info(
-        "Server Launched! (id: %d, %s: %s) Waiting for server to finish booting..."
-        % (server_id, ip_label, server_ip)
+        "Server Launched! (id: %d, %s: %s) Waiting for server to finish booting..." % (server_id, ip_label, server_ip)
     )
 
     ssh_login_user = guess_image_default_username(args.image_identifier)
     ssh_target = "[%s]" % server_ip if is_ipv6 else server_ip
     ssh_args = [get_ssh_bin(), "-i", key_path, "%s@%s" % (ssh_login_user, ssh_target)]
     ssh_cmd = " ".join(ssh_args)
-    print(ssh_cmd)
+    print(ssh_cmd, flush=True)
 
     wait_until_accepts_connection(ip=server_ip, port=22)
     logging.info("Server is up!")
 
+    if provisioning_script:
+        try:
+            run_provisioning_script(
+                provisioning_script,
+                ssh_keyfile=key_path,
+                port=22,
+                target="%s@%s" % (ssh_login_user, ssh_target),
+            )
+        except (subprocess.CalledProcessError, RuntimeError) as error:
+            logging.error("Provisioning script failed: %s", error)
+            terminate(client, server_id)
+            return
+
     if args.detach:
         server_data = server_to_dict(server)
-        print(dump_json_with_datetimes(server_data, indent=2))
+        output = server_data
+        if unified_output:
+            output = build_instance_result(
+                provider="hetzner",
+                resource_id=server_id,
+                status=server.status,
+                host=server_ip,
+                port=22,
+                user=ssh_login_user,
+                instance_type=server.server_type.name if server.server_type else None,
+                image=server.image.name if server.image else None,
+                location=server.location.name if server.location else None,
+                raw=server_data,
+            )
+        print(dump_json_with_datetimes(output, indent=2))
         return
 
     # Launch Shell
@@ -852,10 +801,7 @@ def main():
     os.system(automatic_ssh_cmd)
 
     # After shell exits, wait for SIGTERM/SIGINT
-    logging.info(
-        "Server is still running. Press CTRL+C to terminate, or the command to SSH again is: %s"
-        % ssh_cmd
-    )
+    logging.info("Server is still running. Press CTRL+C to terminate, or the command to SSH again is: %s" % ssh_cmd)
     while True:
         signal.pause()
 

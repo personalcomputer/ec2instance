@@ -1,12 +1,10 @@
 import json
 import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from vastinstance.main import (
+    CONFIG_DIR,
     DEFAULT_AMI,
     IMAGE_TEMPLATES_PATH,
     PROGRAM_NAME,
@@ -45,16 +43,14 @@ class TestParseEnv:
         assert parse_env('-e KEY="1"') == {"KEY": "1"}
 
     def test_env_var_with_equals_in_value(self):
-        assert parse_env("-e PORTAL_CONFIG=localhost:1111:11111") == {
-            "PORTAL_CONFIG": "localhost:1111:11111"
-        }
+        assert parse_env("-e PORTAL_CONFIG=localhost:1111:11111") == {"PORTAL_CONFIG": "localhost:1111:11111"}
 
     def test_multiple(self):
         result = parse_env("-p 1111:1111 -e KEY=1 -e OTHER=2")
         assert result == {"-p 1111:1111": "1", "KEY": "1", "OTHER": "2"}
 
     def test_quoted_value_with_spaces(self):
-        result = parse_env("-e PORTAL_CONFIG=\"localhost:1111:11111:/:Instance Portal\"")
+        result = parse_env('-e PORTAL_CONFIG="localhost:1111:11111:/:Instance Portal"')
         assert result == {"PORTAL_CONFIG": "localhost:1111:11111:/:Instance Portal"}
 
     def test_none(self):
@@ -62,7 +58,7 @@ class TestParseEnv:
 
     def test_full_nvidia_cuda_template_env(self):
         env = (
-            '-p 1111:1111 -p 6006:6006 -p 8080:8080 -p 8384:8384 -p 10100:10100 '
+            "-p 1111:1111 -p 6006:6006 -p 8080:8080 -p 8384:8384 -p 10100:10100 "
             '-p 10200:10200 -p 72299:72299 -e OPEN_BUTTON_PORT="1111" '
             '-e OPEN_BUTTON_TOKEN="1" -e JUPYTER_DIR="/" -e DATA_DIRECTORY="/workspace/" '
             '-e PORTAL_CONFIG="localhost:1111:11111:/:Instance Portal|localhost:8080:18080:/:Jupyter"'
@@ -111,7 +107,7 @@ class TestImageTemplates:
     def test_resolve_template(self):
         t = resolve_template("nvidia-cuda")
         assert t["image"] == "vastai/base-image:@vastai-automatic-tag"
-        assert t["disk"] == 32
+        assert t["disk"] == 16
         assert t["jupyter"] is True
         assert t["ssh"] is True
 
@@ -252,10 +248,16 @@ class TestDefaults:
     def test_program_name(self):
         assert PROGRAM_NAME == "vastinstance"
 
+    def test_uses_shared_config_directory(self):
+        assert CONFIG_DIR.endswith("ec2instance_cmd")
+
 
 class TestGetSshKeyPath:
     def test_returns_none_when_no_keys(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("os.path.expanduser", lambda p: str(tmp_path / p.replace("~", "")))
+        monkeypatch.setattr(
+            "vastinstance.main.os.path.expanduser",
+            lambda path: str(tmp_path / path.removeprefix("~/")),
+        )
         assert get_ssh_key_path() is None
 
     def test_finds_ed25519(self, tmp_path, monkeypatch):
@@ -263,9 +265,9 @@ class TestGetSshKeyPath:
         ssh_dir.mkdir()
         (ssh_dir / "id_ed25519").write_text("KEY")
         monkeypatch.setattr(
-            "vastinstance.main.DEFAULT_SSH_KEY_PATH", str(ssh_dir / "id_ed25519")
+            "vastinstance.main.os.path.expanduser",
+            lambda path: str(tmp_path / path.removeprefix("~/")),
         )
-        # Make the other candidates not exist by redirecting expanduser to tmp
         assert get_ssh_key_path() == str(ssh_dir / "id_ed25519")
 
 

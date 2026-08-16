@@ -1,7 +1,8 @@
 #!/usr/bin/env -S uv run --script
 # /// script
+# requires-python = ">=3.11"
 # dependencies = [
-#     'hcloud',
+#     'hcloud'
 # ]
 # ///
 """
@@ -18,8 +19,10 @@ import json
 import os
 import sys
 import tomllib
+from typing import Any
 
 from hcloud import Client
+from hcloud.server_types import BoundServerType
 
 XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
 HCLOUD_CONFIG_DIR = os.environ.get("HCLOUD_CONFIG_DIR", os.path.join(XDG_CONFIG_HOME, "hcloud"))
@@ -51,11 +54,12 @@ def load_token_from_hcloud_config(context_name: str | None = None) -> str | None
     return contexts[0].get("token")
 
 
-def fetch_data(token: str) -> tuple[dict, list[dict]]:
+def fetch_data(token: str) -> tuple[dict[str, Any], list[BoundServerType]]:
     client = Client(token=token)
     server_types_page = client.server_types.get_list(per_page=50)
     server_types = server_types_page.server_types
     import urllib.request
+
     req = urllib.request.Request(
         "https://api.hetzner.cloud/v1/pricing",
         headers={"Authorization": "Bearer %s" % token, "Accept": "application/json"},
@@ -148,7 +152,12 @@ def main():
     )
     args = arg_parser.parse_args()
 
-    token = args.token or os.environ.get("HCLOUD_TOKEN") or os.environ.get("HETZNER_TOKEN") or load_token_from_hcloud_config(context_name=args.context)
+    token = (
+        args.token
+        or os.environ.get("HCLOUD_TOKEN")
+        or os.environ.get("HETZNER_TOKEN")
+        or load_token_from_hcloud_config(context_name=args.context)
+    )
     if not token:
         print(
             "ERROR: Unable to locate Hetzner Cloud API token!\n\n"
@@ -176,12 +185,19 @@ def main():
     }
 
     if args.dry_run:
-        print(json.dumps({"pricing_date": output["pricing_date"], "server_types_count": len(output["server_types"])}, indent=2))
+        print(
+            json.dumps(
+                {"pricing_date": output["pricing_date"], "server_types_count": len(output["server_types"])}, indent=2
+            )
+        )
         print("[dry-run] Would write to %s" % args.pricing_json, file=sys.stderr)
     else:
         with open(args.pricing_json, "w") as f:
             json.dump(output, f, indent=2)
-        print("Updated %s (pricing_date=%s, %d server types)" % (args.pricing_json, date_str, len(server_types_dict)), file=sys.stderr)
+        print(
+            "Updated %s (pricing_date=%s, %d server types)" % (args.pricing_json, date_str, len(server_types_dict)),
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

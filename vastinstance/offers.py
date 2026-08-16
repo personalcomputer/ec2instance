@@ -3,12 +3,14 @@
 Ported from the standalone vastai_top100.py script. Uses the vastai SDK
 (VastAI.search_offers) instead of shelling out to the `vastai` CLI.
 """
+
 import re
 import shutil
 import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Literal
 
 from rich.console import Console
 from rich.style import Style
@@ -20,15 +22,42 @@ BAD = Style(bgcolor="#822828")
 
 # EU-27 + UK, Norway, Switzerland (vast.ai geolocation codes are ISO country codes).
 EU_CODES = [
-    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT",
-    "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
-    "GB", "NO", "CH",
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
+    "GB",
+    "NO",
+    "CH",
 ]
 
 DEFAULT_MIN_SPEC = "compute_cap>=700 inet_up>=100 inet_down>=100 cpu_ram>=12 cpu_cores_effective>=4"
 
 
-def cell(val: str, bad: bool) -> object:
+def cell(val: str, bad: bool) -> str | Text:
     return Text(val, style=BAD) if bad else val
 
 
@@ -41,7 +70,10 @@ def probe_latency(ip: str, count: int = 3, timeout: float = 2.0) -> float | None
     try:
         proc = subprocess.run(
             ["ping", "-c", str(count), "-W", str(int(timeout)), ip],
-            capture_output=True, text=True, timeout=count * timeout + 5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=count * timeout + 5,
+            check=False,
         )
     except (subprocess.TimeoutExpired, PermissionError, OSError):
         return None
@@ -80,7 +112,7 @@ def probe_latencies(rows: list[dict], workers: int = 32) -> dict[str, float | No
     return cache
 
 
-def _gb(mib: float) -> float:
+def _gb(mib: float | None) -> float:
     return (mib or 0) / 1024.0
 
 
@@ -94,16 +126,10 @@ def _type_tag(r: dict) -> str:
     return base + (" " + " ".join(tags) if tags else "")
 
 
-def _build_query(
-    query: str, vm_only: bool, container_only: bool, eur: bool, sec_only: bool, no_min_spec: bool
-) -> str:
-    if vm_only and container_only:
-        raise ValueError("--vm-only and --container-only are mutually exclusive")
+def _build_query(query: str, vm_only: bool, eur: bool, sec_only: bool, no_min_spec: bool) -> str:
     parts = [p for p in query.split() if p]
     if vm_only:
         parts.append("vms_enabled=True")
-    elif container_only:
-        parts.append("vms_enabled=False")
     if eur:
         parts.append("geolocation in [" + ",".join(EU_CODES) + "]")
     if sec_only:
@@ -113,6 +139,14 @@ def _build_query(
     return " ".join(parts)
 
 
+def _format_location(value: str | None) -> str:
+    """Normalize Vast locations, omitting an empty city/region component."""
+    if not value:
+        return "?"
+    parts = [part.strip() for part in str(value).split(",") if part.strip()]
+    return ", ".join(parts) or "?"
+
+
 def _fetch(vast: VastAI, query: str, offer_type: str, order: str, limit: int, storage_gb: float) -> list[dict]:
     return vast.search_offers(
         query=query, type=offer_type, order=order, limit=limit, storage=storage_gb, no_default=True
@@ -120,7 +154,12 @@ def _fetch(vast: VastAI, query: str, offer_type: str, order: str, limit: int, st
 
 
 def _build_table(
-    rows: list[dict], n: int, title: str, up_gb_hr: float, down_gb_hr: float, disk_gb: float,
+    rows: list[dict],
+    n: int,
+    title: str,
+    up_gb_hr: float,
+    down_gb_hr: float,
+    disk_gb: float,
     latencies: dict[str, float | None] | None,
 ) -> Table:
     cap = (
@@ -129,12 +168,20 @@ def _build_table(
         "Type OD=on-demand Int=interruptible, +Sec=secure datacenter, +VM=VM-capable"
     )
     table = Table(title=title, caption=cap)
-    cols = [
-        ("ID", "left"), ("Type", "left"), ("Location", "left"), ("eff $/4hr", "right"),
-        ("GPU", "left"), ("CPU", "left"),
-        ("UL Mb/s", "right"), ("DL Mb/s", "right"),
+    cols: list[tuple[str, Literal["left", "right"]]] = [
+        ("ID", "left"),
+        ("Type", "left"),
+        ("Location", "left"),
+        ("eff $/4hr", "right"),
+        ("GPU", "left"),
+        ("CPU", "left"),
+        ("UL Mb/s", "right"),
+        ("DL Mb/s", "right"),
         ("lat ms", "right"),
-        ("rent $/hr", "right"), ("bw $/hr", "right"), ("UL $/TB", "right"), ("DL $/TB", "right"),
+        ("rent $/hr", "right"),
+        ("bw $/hr", "right"),
+        ("UL $/TB", "right"),
+        ("DL $/TB", "right"),
     ]
     for c, just in cols:
         table.add_column(c, justify=just, no_wrap=True, overflow="ellipsis")
@@ -151,10 +198,11 @@ def _build_table(
         dl = r.get("inet_down") or 0
         ul_cost = r.get("internet_up_cost_per_tb") or 0.0
         dl_cost = r.get("internet_down_cost_per_tb") or 0.0
-        loc = r.get("geolocation") or "?"
+        loc = _format_location(r.get("geolocation"))
         lat_s = "-"
         if latencies is not None:
-            v = latencies.get(r.get("public_ipaddr"))
+            public_ip = r.get("public_ipaddr")
+            v = latencies.get(public_ip) if isinstance(public_ip, str) else None
             lat_s = f"{v:.0f}" if v is not None else "?"
         table.add_row(
             str(r["id"]),
@@ -176,30 +224,40 @@ def _build_table(
 
 def list_types(vast: VastAI, args) -> None:
     """Print a table of the top N cheapest vast.ai offers (on-demand + interruptible)."""
-    query = _build_query(
-        args.query, args.vm_only, args.container_only, args.eur, args.sec_only, args.no_min_spec
-    )
+    query = _build_query(args.query, args.vm_only, args.eur, args.sec_only, args.no_min_spec)
     limit = args.limit if args.limit > 0 else 2000
     rows: list[dict] = []
     if not args.int_only:
         for o in _fetch(vast, query, "on-demand", "dph_total", limit, args.disk_gb):
             o["type"] = "on-demand"
             o["rent"] = o["dph_total"]
-            o["bw"] = args.up_gb_hr * (o.get("inet_up_cost") or 0.0) + args.down_gb_hr * (o.get("inet_down_cost") or 0.0)
+            o["bw"] = args.up_gb_hr * (o.get("inet_up_cost") or 0.0) + args.down_gb_hr * (
+                o.get("inet_down_cost") or 0.0
+            )
             o["eff"] = o["rent"] + o["bw"]
             rows.append(o)
     if not args.od_only:
         for o in _fetch(vast, query, "bid", "min_bid", limit, args.disk_gb):
             o["type"] = "interrupt"
             o["rent"] = o["min_bid"]
-            o["bw"] = args.up_gb_hr * (o.get("inet_up_cost") or 0.0) + args.down_gb_hr * (o.get("inet_down_cost") or 0.0)
+            o["bw"] = args.up_gb_hr * (o.get("inet_up_cost") or 0.0) + args.down_gb_hr * (
+                o.get("inet_down_cost") or 0.0
+            )
             o["eff"] = o["rent"] + o["bw"]
             rows.append(o)
     rows.sort(key=lambda r: r["eff"])
-    latencies = probe_latencies(rows[:args.n]) if args.latency else None
+    latencies = probe_latencies(rows[: args.n]) if args.latency else None
     console = Console(width=240, force_terminal=True, color_system="truecolor")
     console.print(
-        _build_table(rows, args.n, f"Top {args.n} cheapest available vast.ai offers", args.up_gb_hr, args.down_gb_hr, args.disk_gb, latencies)
+        _build_table(
+            rows,
+            args.n,
+            f"Top {args.n} cheapest available vast.ai offers",
+            args.up_gb_hr,
+            args.down_gb_hr,
+            args.disk_gb,
+            latencies,
+        )
     )
     console.print(
         f"[dim]scanned: {len(rows)} offers | eff $/4hr = 4 * (rent + {args.up_gb_hr:g} GB/hr UL + "

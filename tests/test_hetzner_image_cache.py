@@ -1,11 +1,8 @@
 import datetime
 import json
-import os
-import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import main
+from hetznerinstance import main
 
 
 class FakeImage:
@@ -65,9 +62,7 @@ def test_cached_latest_ubuntu_expires_after_one_week():
         cache_path = main._latest_ubuntu_cache_path("x86")
         with open(cache_path) as f:
             data = json.load(f)
-        old = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(
-            days=8
-        )
+        old = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=8)
         data["cached_at"] = old.isoformat()
         with open(cache_path, "w") as f:
             json.dump(data, f)

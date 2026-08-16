@@ -1,7 +1,4 @@
-import os
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
@@ -11,44 +8,36 @@ from vastinstance.main import main
 
 class TestBuildQuery:
     def test_default_query_kept(self):
-        q = offers._build_query("rentable=true", False, False, False, False, False)
+        q = offers._build_query("rentable=true", False, False, False, False)
         assert "rentable=true" in q
         assert offers.DEFAULT_MIN_SPEC in q
 
     def test_no_min_spec_removes_min_spec(self):
-        q = offers._build_query("rentable=true", False, False, False, False, True)
+        q = offers._build_query("rentable=true", False, False, False, True)
         assert "compute_cap" not in q
 
     def test_vm_only(self):
-        q = offers._build_query("rentable=true", True, False, False, False, True)
+        q = offers._build_query("rentable=true", True, False, False, True)
         assert "vms_enabled=True" in q
         assert "vms_enabled=False" not in q
 
-    def test_container_only(self):
-        q = offers._build_query("rentable=true", False, True, False, False, True)
-        assert "vms_enabled=False" in q
-
-    def test_vm_and_container_mutually_exclusive(self):
-        with pytest.raises(ValueError):
-            offers._build_query("rentable=true", True, True, False, False, True)
-
     def test_eur_appends_geolocation_in(self):
-        q = offers._build_query("rentable=true", False, False, True, False, True)
+        q = offers._build_query("rentable=true", False, True, False, True)
         assert "geolocation in [" in q
         assert "DE" in q
         assert "GB" in q
 
     def test_sec_only(self):
-        q = offers._build_query("rentable=true", False, False, False, True, True)
+        q = offers._build_query("rentable=true", False, False, True, True)
         assert "datacenter=true" in q
 
     def test_eur_and_sec_combined(self):
-        q = offers._build_query("rentable=true", False, False, True, True, True)
+        q = offers._build_query("rentable=true", False, True, True, True)
         assert "geolocation in [" in q
         assert "datacenter=true" in q
 
     def test_extra_query_terms_preserved(self):
-        q = offers._build_query("rentable=true num_gpus=1 gpu_name=RTX_4090", False, False, False, False, True)
+        q = offers._build_query("rentable=true num_gpus=1 gpu_name=RTX_4090", False, False, False, True)
         assert "num_gpus=1" in q
         assert "gpu_name=RTX_4090" in q
 
@@ -79,6 +68,17 @@ class TestGb:
 
     def test_zero(self):
         assert offers._gb(0) == 0.0
+
+
+class TestFormatLocation:
+    def test_city_and_country(self):
+        assert offers._format_location("Beijing, CN") == "Beijing, CN"
+
+    def test_unknown_city_shows_country_without_comma(self):
+        assert offers._format_location(", CN") == "CN"
+
+    def test_missing_location(self):
+        assert offers._format_location(None) == "?"
 
 
 class TestProbeLatency:
@@ -123,6 +123,44 @@ class TestListTypesCli:
         monkeypatch.setattr(sys, "argv", ["vastinstance", "list-types", "--eur", "--sec-only", "--latency"])
         main()
         assert seen == {"eur": True, "sec_only": True, "latency": True}
+
+    def test_pricing_mode_flags_parsed(self, monkeypatch):
+        seen = {}
+
+        def fake_list_types(vast, args):
+            seen.update(od_only=args.od_only, int_only=args.int_only)
+
+        class FakeVastAI:
+            def __init__(self, *a, **kw):
+                pass
+
+        monkeypatch.setattr(offers, "list_types", fake_list_types)
+        monkeypatch.setattr("vastinstance.main.VastAI", FakeVastAI)
+
+        monkeypatch.setattr(sys, "argv", ["vastinstance", "list-types", "--od-only"])
+        main()
+        assert seen == {"od_only": True, "int_only": False}
+
+        monkeypatch.setattr(sys, "argv", ["vastinstance", "list-types", "-int-only"])
+        main()
+        assert seen == {"od_only": False, "int_only": True}
+
+    def test_removed_flags_are_rejected(self, monkeypatch):
+        for flag in ("--container-only", "--on-demand-only", "--interruptible-only"):
+            monkeypatch.setattr(sys, "argv", ["vastinstance", "list-types", flag])
+            with pytest.raises(SystemExit) as exc:
+                main()
+            assert exc.value.code == 2
+
+    def test_query_help_includes_examples(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["vastinstance", "list-types", "--help"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        output = capsys.readouterr().out
+        assert "query examples:" in output
+        assert "gpu_name=RTX_4090" in output
+        assert "vms_enabled=false" in output
 
     def test_launch_flow_unaffected_by_subparser(self, monkeypatch):
         # The default launch flow must still require -t/--type
