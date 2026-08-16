@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ec2instance"
-version = "2.0.0"
+version = "2.0.1"
 description = "Launch temporary AWS, Hetzner Cloud, and vast.ai instances with one command"
 readme = "README.md"
 authors = [
